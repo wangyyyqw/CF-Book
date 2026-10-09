@@ -11,6 +11,11 @@
   box-sizing: border-box;
 }
 
+/* 保证脚本切换的 hidden 字段不会被组件布局规则覆盖 */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   font-family: "Songti SC", "Noto Serif SC", Georgia, serif;
