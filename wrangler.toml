@@ -10,3 +10,6 @@ database_id = "[D1_DATABASE_ID]"
 [[r2_buckets]]
 binding = "COVERS"
 bucket_name = "[R2_BUCKET_NAME]"
+
+[ai]
+binding = "AI"

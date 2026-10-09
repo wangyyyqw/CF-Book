@@ -1,5 +1,6 @@
 import { json, err } from '../../utils/http.js';
 import { dbGet, dbAll, dbRun, nowSec } from '../../utils/db.js';
+import { classifyBook } from '../../utils/ai-classification.js';
 
 function cleanBase(name) {
   const base = String(name || '').replace(/\.[^.]+$/, '');
@@ -78,6 +79,11 @@ export async function onRequestPost(context) {
     );
   } else {
     bookId = existing.id;
+  }
+
+  // 不阻塞上传响应；生产 Pages 会在后台完成联网书目检索和 AI 分类。
+  if (!existing && env.AI && typeof context.waitUntil === 'function') {
+    context.waitUntil(classifyBook(env, bookId).catch(() => {}));
   }
 
   return json({

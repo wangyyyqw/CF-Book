@@ -748,6 +748,34 @@ body.library-page.library-dark {
   white-space: nowrap;
 }
 
+.ai-usage-grid {
+  display: grid;
+  gap: 0.35rem;
+  margin: 1rem 0 0.65rem;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.ai-usage-grid strong {
+  color: var(--ink);
+  font-size: 1.15rem;
+}
+
+.ai-meter {
+  height: 0.65rem;
+  margin-bottom: 0.9rem;
+  overflow: hidden;
+  background: #e0d8c9;
+}
+
+.ai-meter i {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
 /* 书籍详情 */
 .book-form {
   display: flex;

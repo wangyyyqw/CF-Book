@@ -7,6 +7,44 @@ let me = null;
 
 const ROLE_LABEL = { admin: '管理员', member: '成员' };
 
+async function loadAiUsage() {
+  const res = await api('/api/ai/classify');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) {
+    $('ai-usage').textContent = `额度读取失败：${data.error || res.status}`;
+    return;
+  }
+  const percent = data.dailyLimit ? Math.min(100, data.usedNeurons / data.dailyLimit * 100) : 0;
+  $('ai-usage').innerHTML = `
+    <span><strong>${data.usedNeurons.toFixed(2)}</strong> / ${data.dailyLimit.toLocaleString()} 估算 Neurons</span>
+    <span>今日请求 ${data.requests} 次 · 完成 ${data.completed} · 失败 ${data.failed}</span>
+    <span>待整理 ${data.pending} / 共 ${data.totalBooks} 本</span>`;
+  $('ai-meter-fill').style.width = `${percent}%`;
+  $('ai-meter-fill').title = `${percent.toFixed(1)}%`;
+}
+
+async function classifyBatch() {
+  $('ai-classify').disabled = true;
+  $('ai-msg').textContent = '正在整理，每次最多处理 10 本…';
+  try {
+    const res = await api('/api/ai/classify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ limit: 10 }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      $('ai-msg').textContent = `整理失败：${data.error || res.status}`;
+      return;
+    }
+    const failed = data.results.filter((result) => result.error).length;
+    $('ai-msg').textContent = `本批处理 ${data.processed} 本${failed ? `，失败 ${failed} 本` : ''}`;
+    await loadAiUsage();
+  } finally {
+    $('ai-classify').disabled = false;
+  }
+}
+
 async function load() {
   const res = await api('/api/users');
   const data = await res.json().catch(() => ({}));
@@ -147,4 +185,7 @@ loadMe().then((data) => {
     return;
   }
   load();
+  loadAiUsage();
 });
+
+$('ai-classify').addEventListener('click', classifyBatch);

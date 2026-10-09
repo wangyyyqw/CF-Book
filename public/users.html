@@ -52,6 +52,19 @@
       </section>
 
       <section class="panel">
+        <h2>AI 书名与标签整理</h2>
+        <p class="form-msg">先查询公开书目资料，再由 Workers AI 清理书名并生成 3 个共享标签；不会上传书籍原文件。额度按模型返回 token 估算，最终账单以 Cloudflare 控制台为准。</p>
+        <div class="ai-usage-grid" id="ai-usage">
+          <span>正在读取今日额度…</span>
+        </div>
+        <div class="ai-meter" aria-label="今日 AI 额度使用情况"><i id="ai-meter-fill"></i></div>
+        <div class="actions-row">
+          <button id="ai-classify" type="button">整理现有书籍</button>
+          <span id="ai-msg" class="form-msg"></span>
+        </div>
+      </section>
+
+      <section class="panel">
         <h2>修改我的密码</h2>
         <form id="password-form" class="inline-form">
           <input id="current-password" type="password" placeholder="当前密码" autocomplete="current-password" required />
