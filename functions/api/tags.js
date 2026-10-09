@@ -3,5 +3,6 @@ import { listStandardTagDimensions } from '../utils/standard-tags.js';
 
 export async function onRequestGet(context) {
   const { env } = context;
-  return json({ ok: true, dimensions: await listStandardTagDimensions(env) });
+  const result = await listStandardTagDimensions(env);
+  return json({ ok: true, ...result });
 }

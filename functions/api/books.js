@@ -27,8 +27,12 @@ export async function onRequestGet(context) {
     filters.push(like, like, like);
   }
   if (tag) {
-    where.push('b.id IN (SELECT book_id FROM book_standard_tags WHERE tag_id = ?)');
-    filters.push(tag);
+    if (tag === '__untagged__') {
+      where.push('NOT EXISTS (SELECT 1 FROM book_standard_tags WHERE book_id = b.id)');
+    } else {
+      where.push('b.id IN (SELECT book_id FROM book_standard_tags WHERE tag_id = ?)');
+      filters.push(tag);
+    }
   }
   if (status) {
     where.push(status === 'favorite'

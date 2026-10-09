@@ -91,8 +91,9 @@ async function load() {
   $('f-status').value = b.my_status || 'unread';
   $('f-favorite').checked = Boolean(b.my_favorite);
   await loadTagOptions((b.tag_details || []).map((tag) => tag.tag_id));
-  $('tag-groups').innerHTML = (b.tag_details || []).map((tag) =>
-    `<span class="tag-chip">${escapeHtml(tag.name)}</span>`).join('');
+  $('tag-groups').innerHTML = (b.tag_details || []).length
+    ? (b.tag_details || []).map((tag) => `<span class="tag-chip">${escapeHtml(tag.name)}</span>`).join('')
+    : '<span class="muted">暂无标签，请在下方手动添加</span>';
   if (tagSelects.length) {
     const selectedIds = (b.tag_details || []).map((tag) => tag.tag_id);
     selectedIds.forEach((tagId, index) => { if (tagSelects[index]) tagSelects[index].value = tagId; });

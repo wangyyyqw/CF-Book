@@ -111,6 +111,17 @@ test('按标签筛选，总数同样跟随筛选', async () => {
   assert.deepEqual(data.books[0].tag_categories, { pub_field: ['历史学'] });
 });
 
+test('无标签筛选只返回没有标准标签的书', async () => {
+  const env = makeEnv();
+  addBook(env.DB, { id: 'b1', title: '已分类', created: 1 });
+  addBook(env.DB, { id: 'b2', title: '待整理', created: 2 });
+  env.DB.exec(`INSERT INTO book_standard_tags (book_id, tag_id) VALUES ('b1', 'PUB_FIELD_0045');`);
+
+  const data = await list(env, '?tag=__untagged__');
+  assert.deepEqual(data.books.map((b) => b.id), ['b2']);
+  assert.equal(data.total, 1);
+});
+
 test('不合法标签 ID 不会先创建空标签书籍', async () => {
   const { onRequestPost } = await import('../functions/api/books/[id].js');
   const env = makeEnv();

@@ -81,6 +81,10 @@ async function loadTags() {
   const res = await api('/api/tags');
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) return;
+  const untaggedOption = document.createElement('option');
+  untaggedOption.value = '__untagged__';
+  untaggedOption.textContent = `无标签（${Number(data.untaggedCount) || 0}）`;
+  tagFilterEl.appendChild(untaggedOption);
   for (const group of data.dimensions || []) {
     const optgroup = document.createElement('optgroup');
     optgroup.label = group.name_zh;

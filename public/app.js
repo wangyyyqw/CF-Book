@@ -68,7 +68,6 @@ async function uploadFile(file, { signal, onLog = log } = {}) {
   }
   checkAborted();
 
-  const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
   const initRes = await api('/api/upload/init', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -85,10 +84,17 @@ async function uploadFile(file, { signal, onLog = log } = {}) {
   const init = await readJsonResponse(initRes, '初始化上传');
   if (!initRes.ok || !init.ok) throw responseError(initRes, init, '初始化上传');
   const uploadId = init.uploadId;
+  const chunkSize = Number(init.chunkSize) || CHUNK_SIZE;
+  const totalChunks = Number(init.totalChunks) || Math.ceil(file.size / chunkSize);
+  const uploadedChunks = new Set((init.uploadedChunks || []).map(Number));
+  if (init.resumed) {
+    report(`继续未完成任务：已完成 ${uploadedChunks.size}/${totalChunks} 块`);
+  }
   report(`已初始化：${uploadId}，共 ${totalChunks} 块`);
+  setProgress((uploadedChunks.size / totalChunks) * 100);
 
   // 并发上传分块（保持顺序进度统计）
-  let doneCount = 0;
+  let doneCount = uploadedChunks.size;
   let uploadedBytes = 0;
   let lastSpeedTick = Date.now();
   const speedTimer = setInterval(() => {
@@ -104,18 +110,19 @@ async function uploadFile(file, { signal, onLog = log } = {}) {
     lastSpeedTick = now;
   }, 500);
   const uploadOne = async (i) => {
-    const start = i * CHUNK_SIZE;
-    const end = Math.min(file.size, start + CHUNK_SIZE);
+    if (uploadedChunks.has(i)) return;
+    const start = i * chunkSize;
+    const end = Math.min(file.size, start + chunkSize);
     const blob = file.slice(start, end);
-    const fd = new FormData();
-    fd.append('uploadId', uploadId);
-    fd.append('index', String(i));
-    fd.append('file', blob, `${file.name}.part${String(i).padStart(3, '0')}`);
 
     let lastError;
     for (let attempt = 1; attempt <= CHUNK_RETRIES; attempt++) {
       checkAborted();
       try {
+        const fd = new FormData();
+        fd.append('uploadId', uploadId);
+        fd.append('index', String(i));
+        fd.append('file', blob, `${file.name}.part${String(i).padStart(3, '0')}`);
         const res = await api(`/api/upload/chunk`, { method: 'POST', body: fd, signal });
         const data = await readJsonResponse(res, `分块 ${i + 1}/${totalChunks}`);
         if (!res.ok || !data.ok) throw responseError(res, data, `分块 ${i + 1}/${totalChunks}`);

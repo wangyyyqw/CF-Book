@@ -88,11 +88,22 @@ export async function listStandardTagDimensions(env) {
     FROM standard_tags WHERE status='active' ORDER BY dimension, category, name`);
   const counts = await dbAll(env, `SELECT tag_id, COUNT(book_id) AS count FROM book_standard_tags GROUP BY tag_id`);
   const countById = new Map(counts.map((row) => [row.tag_id, Number(row.count)]));
-  return dimensions.map((dimension) => ({
+  const populatedDimensions = dimensions.map((dimension) => ({
     ...dimension,
     tags: tags.filter((tag) => tag.dimension === dimension.dimension)
       .map((tag) => ({ ...tag, count: countById.get(tag.tag_id) || 0 })),
-  }));
+  })).map((dimension) => ({
+    ...dimension,
+    tags: dimension.tags.filter((tag) => tag.count > 0),
+  })).filter((dimension) => dimension.tags.length > 0);
+  return {
+    dimensions: populatedDimensions,
+    untaggedCount: Number((await dbGet(
+      env,
+      `SELECT COUNT(*) AS count FROM books b
+       WHERE NOT EXISTS (SELECT 1 FROM book_standard_tags bt WHERE bt.book_id = b.id)`
+    )).count || 0),
+  };
 }
 
 export async function getTagNames(env, tagIds) {
