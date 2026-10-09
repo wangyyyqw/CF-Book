@@ -1,7 +1,7 @@
 import { dbGet, dbRun, nowSec } from './db.js';
 import { replaceTags } from './tags.js';
 
-export const DEFAULT_AI_MODEL = '@cf/meta/llama-3.2-1b-instruct';
+export const DEFAULT_AI_MODEL = '@cf/qwen/qwen3-30b-a3b-fp8';
 export const DEFAULT_DAILY_LIMIT = 10000;
 
 const MODEL_RATES = {
@@ -54,12 +54,13 @@ export async function classifyBook(env, bookId, { force = false } = {}) {
         { role: 'system', content: '你是中文私人书库整理助手，只输出符合要求的 JSON，不要输出解释。' },
         { role: 'user', content: prompt },
       ],
-      max_tokens: 120,
+      max_tokens: 300,
       temperature: 0.1,
+      top_p: 0.2,
       response_format: { type: 'json_object' },
     });
     usage = normalizeUsage(response?.usage);
-    const result = normalizeResult(responseText(response), book.title);
+    const result = normalizeResult(responseText(response), book.title, book.author);
     await replaceTags(env, bookId, result.tags);
     await dbRun(
       env,
@@ -110,7 +111,7 @@ async function saveUsage(env, { bookId, model, usage, status, error = '' }) {
     model,
     usage.prompt_tokens,
     usage.completion_tokens,
-    estimateNeurons(usage.prompt_tokens, usage.completion_tokens),
+    estimateNeurons(usage.prompt_tokens, usage.completion_tokens, model),
     status,
     error.slice(0, 500),
     nowSec()
@@ -168,7 +169,7 @@ function normalizeUsage(value) {
   };
 }
 
-function normalizeResult(text, fallbackTitle = '') {
+function normalizeResult(text, fallbackTitle = '', author = '') {
   const cleaned = String(text || '')
     .replace(/<think>[\s\S]*?<\/think>/gi, '')
     .replace(/^```(?:json)?\s*|\s*```$/gi, '')
@@ -187,21 +188,22 @@ function normalizeResult(text, fallbackTitle = '') {
     }
   }
   const candidateTitle = String(data.title || '').trim();
-  const title = isPlausibleTitle(candidateTitle, fallbackTitle)
+  const title = isPlausibleTitle(candidateTitle, fallbackTitle, author)
     ? candidateTitle
     : cleanTitleFallback(fallbackTitle);
   const tags = [...new Set(Array.isArray(data.tags) ? data.tags.map((tag) => String(tag).trim()).filter((tag) => BOOK_TAGS.includes(tag)) : [])];
-  for (const fallback of ['其他', '文学', '小说']) {
+  for (const fallback of ['其他', '小说', '文学']) {
     if (tags.length >= 3) break;
     if (!tags.includes(fallback)) tags.push(fallback);
   }
   return { title, tags: tags.slice(0, 3) };
 }
 
-function isPlausibleTitle(candidate, original) {
+function isPlausibleTitle(candidate, original, author = '') {
   if (!candidate || /^(清理后的书名|书名|未知书名|未命名)$/i.test(candidate)) return false;
   const source = String(original || '').replace(/\.[^.]+$/, '').trim();
   if (!source) return true;
+  if (author && candidate.includes(author.replace(/[（(].*$/, '').trim())) return false;
   const overlap = [...new Set(candidate.replace(/[^\p{L}\p{N}]/gu, ''))]
     .filter((char) => source.includes(char)).length;
   return overlap >= Math.min(2, candidate.length);
