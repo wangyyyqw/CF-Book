@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS uploads (
   sha256       TEXT NOT NULL DEFAULT '',
   status       TEXT NOT NULL DEFAULT 'active',
   owner        TEXT NOT NULL DEFAULT '',
+  verified_at  INTEGER NOT NULL DEFAULT 0,
+  verify_result TEXT NOT NULL DEFAULT '',
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL
 );

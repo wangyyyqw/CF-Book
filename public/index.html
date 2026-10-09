@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>CF-Book · 分块传输原型</title>
+    <title>CF-Book · 上传任务</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body class="library-page">
@@ -23,18 +23,21 @@
 
     <main class="shell library-shell">
       <section class="panel">
-        <h2>批量上传书籍</h2>
-        <input id="file" type="file" multiple />
-        <p id="file-summary" class="form-msg">可一次选择多本书，系统会按顺序上传。</p>
-        <ul id="file-queue" class="upload-queue"></ul>
-        <div class="actions">
-          <button id="start">开始上传</button>
-          <button id="abort" disabled>中止</button>
+        <h2>上传任务</h2>
+        <div class="queue-toolbar">
+          <label class="btn-cover">选择书籍文件<input id="file" type="file" multiple hidden /></label>
+          <button id="start-all" type="button">全部开始</button>
+          <button id="pause-all" type="button">全部暂停</button>
+          <button id="cleanup-stale" type="button">清理长期失效任务</button>
+          <button id="clear-finished" type="button">清理已结束</button>
+          <span id="queue-summary" class="form-msg"></span>
         </div>
-        <div id="progress-wrap" class="progress-wrap" hidden>
-          <div id="progress" class="progress"></div>
-          <div id="speed" class="speed">0.0 MB/s</div>
-        </div>
+        <p id="file-summary" class="form-msg">可一次选择多本书，任务会保存在浏览器里，刷新页面后可继续。</p>
+        <ul id="upload-queue" class="task-list"></ul>
+      </section>
+
+      <section class="panel">
+        <h2>日志</h2>
         <ul id="log" class="log"></ul>
       </section>
     </main>

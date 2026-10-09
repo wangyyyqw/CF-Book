@@ -69,6 +69,9 @@ export async function onRequestPost(context) {
     index
   );
 
+  // 刷新任务活动时间，避免正在上传的大文件被“长期失效任务”清理误判
+  await dbRun(env, 'UPDATE uploads SET updated_at = ? WHERE upload_id = ?', nowSec(), uploadId);
+
   return json({
     ok: true,
     index,

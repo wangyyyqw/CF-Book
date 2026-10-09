@@ -41,7 +41,8 @@ export async function tgSendChunk(env, chunkBytes, fileName) {
   };
 }
 
-export async function tgDownloadChunk(env, fileId) {
+// 只查询文件元信息（不下载内容），用于校验分块是否还在 Telegram 上
+export async function tgFileInfo(env, fileId) {
   const { token } = tgEnv(env);
   const infoRes = await fetch(
     `${botUrl(token, 'getFile')}?file_id=${encodeURIComponent(fileId)}`
@@ -50,8 +51,17 @@ export async function tgDownloadChunk(env, fileId) {
   if (!infoRes.ok || !info.ok || !info.result?.file_path) {
     throw new Error(`Telegram getFile 失败: ${info.description || infoRes.status}`);
   }
+  return {
+    fileId: info.result.file_id,
+    filePath: info.result.file_path,
+    fileSize: Number(info.result.file_size) || 0,
+  };
+}
 
-  const fileRes = await fetch(`${TG_API}/file/bot${token}/${info.result.file_path}`);
+export async function tgDownloadChunk(env, fileId) {
+  const { token } = tgEnv(env);
+  const info = await tgFileInfo(env, fileId);
+  const fileRes = await fetch(`${TG_API}/file/bot${token}/${info.filePath}`);
   if (!fileRes.ok) {
     throw new Error(`Telegram 文件下载失败: ${fileRes.status}`);
   }
