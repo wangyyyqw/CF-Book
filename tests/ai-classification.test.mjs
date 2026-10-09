@@ -47,3 +47,18 @@ test('分类会使用公开书目检索、清理书名、写入三个共享标�
     globalThis.fetch = originalFetch;
   }
 });
+
+test('AI 返回占位书名时保留原书名并执行安全清理', async () => {
+  const env = envWithBook();
+  env.AI = { async run() {
+    return { choices: [{ message: { content: JSON.stringify({ title: '清理后的书名', tags: ['文学', '小说', '历史'] }) } }], usage: {} };
+  } };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ docs: [] }), { status: 200 });
+  try {
+    const result = await classifyBook(env, 'b1');
+    assert.equal(result.title, '银河英雄传说');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

@@ -59,7 +59,7 @@ export async function classifyBook(env, bookId, { force = false } = {}) {
       response_format: { type: 'json_object' },
     });
     usage = normalizeUsage(response?.usage);
-    const result = normalizeResult(responseText(response));
+    const result = normalizeResult(responseText(response), book.title);
     await replaceTags(env, bookId, result.tags);
     await dbRun(
       env,
@@ -151,7 +151,8 @@ function buildPrompt(book, source) {
     filename: book.file_name,
     public_catalog: source,
   };
-  return `整理下面这本书，输出 JSON：{"title":"清理后的书名","tags":["标签1","标签2","标签3"]}。
+  return `整理下面这本书。只输出 JSON 对象，键必须是 title 和 tags，值必须替换为这本书的真实结果，禁止输出“清理后的书名”“标签1”等示例占位词。
+JSON 结构：{"title":"实际书名","tags":["实际标签1","实际标签2","实际标签3"]}
 规则：
 1. 删除书名中的套装、上下册、全套、插图、珍藏版、精装版、电子版、扫描版、网盘版等版本或营销描述；不要删除真正的系列名或副标题。
 2. tags 必须恰好 3 个，且只能从候选词中选择：${BOOK_TAGS.join('、')}。
@@ -167,7 +168,7 @@ function normalizeUsage(value) {
   };
 }
 
-function normalizeResult(text) {
+function normalizeResult(text, fallbackTitle = '') {
   const cleaned = String(text || '')
     .replace(/<think>[\s\S]*?<\/think>/gi, '')
     .replace(/^```(?:json)?\s*|\s*```$/gi, '')
@@ -185,13 +186,33 @@ function normalizeResult(text) {
       throw new Error('AI 返回的 JSON 无法解析');
     }
   }
-  const title = String(data.title || '').trim();
+  const candidateTitle = String(data.title || '').trim();
+  const title = isPlausibleTitle(candidateTitle, fallbackTitle)
+    ? candidateTitle
+    : cleanTitleFallback(fallbackTitle);
   const tags = [...new Set(Array.isArray(data.tags) ? data.tags.map((tag) => String(tag).trim()).filter((tag) => BOOK_TAGS.includes(tag)) : [])];
   for (const fallback of ['其他', '文学', '小说']) {
     if (tags.length >= 3) break;
     if (!tags.includes(fallback)) tags.push(fallback);
   }
   return { title, tags: tags.slice(0, 3) };
+}
+
+function isPlausibleTitle(candidate, original) {
+  if (!candidate || /^(清理后的书名|书名|未知书名|未命名)$/i.test(candidate)) return false;
+  const source = String(original || '').replace(/\.[^.]+$/, '').trim();
+  if (!source) return true;
+  const overlap = [...new Set(candidate.replace(/[^\p{L}\p{N}]/gu, ''))]
+    .filter((char) => source.includes(char)).length;
+  return overlap >= Math.min(2, candidate.length);
+}
+
+function cleanTitleFallback(title) {
+  return String(title || '未命名')
+    .replace(/\s*[（(\[][^）)\]]*(?:套装|上下册|全套|插图|珍藏|精装|电子版|扫描版|网盘)[^）)\]]*[）)\]]/gi, '')
+    .replace(/\s*(?:套装|上下册|全套|插图珍藏版|珍藏版|精装版|电子版|扫描版|网盘版)\s*/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim() || '未命名';
 }
 
 function responseText(response) {
