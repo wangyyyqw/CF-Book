@@ -16,4 +16,10 @@ test('标签接口只返回有书使用的标签，并返回无标签书籍数�
   const usedTags = data.dimensions.flatMap((dimension) => dimension.tags);
   assert.deepEqual(usedTags.map((tag) => tag.tag_id), ['PUB_FIELD_0045']);
   assert.ok(usedTags.every((tag) => tag.count > 0));
+
+  const all = await (await onRequestGet({
+    env,
+    request: new Request('https://example.com/api/tags?include_unused=1'),
+  })).json();
+  assert.ok(all.dimensions.flatMap((dimension) => dimension.tags).some((tag) => tag.count === 0));
 });

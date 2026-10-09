@@ -82,7 +82,7 @@ export async function standardTagDetails(env, bookId) {
   );
 }
 
-export async function listStandardTagDimensions(env) {
+export async function listStandardTagDimensions(env, { includeUnused = false } = {}) {
   const dimensions = await dbAll(env, 'SELECT dimension, name_zh, description FROM tag_dimensions ORDER BY rowid');
   const tags = await dbAll(env, `SELECT tag_id, name, dimension, category, description
     FROM standard_tags WHERE status='active' ORDER BY dimension, category, name`);
@@ -92,10 +92,10 @@ export async function listStandardTagDimensions(env) {
     ...dimension,
     tags: tags.filter((tag) => tag.dimension === dimension.dimension)
       .map((tag) => ({ ...tag, count: countById.get(tag.tag_id) || 0 })),
-  })).map((dimension) => ({
+  })).map((dimension) => includeUnused ? dimension : {
     ...dimension,
     tags: dimension.tags.filter((tag) => tag.count > 0),
-  })).filter((dimension) => dimension.tags.length > 0);
+  }).filter((dimension) => includeUnused || dimension.tags.length > 0);
   return {
     dimensions: populatedDimensions,
     untaggedCount: Number((await dbGet(

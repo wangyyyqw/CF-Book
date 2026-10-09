@@ -3,6 +3,7 @@ import { listStandardTagDimensions } from '../utils/standard-tags.js';
 
 export async function onRequestGet(context) {
   const { env } = context;
-  const result = await listStandardTagDimensions(env);
+  const includeUnused = new URL(context.request?.url || 'https://example.com/api/tags').searchParams.get('include_unused') === '1';
+  const result = await listStandardTagDimensions(env, { includeUnused });
   return json({ ok: true, ...result });
 }

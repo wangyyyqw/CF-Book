@@ -7,7 +7,7 @@ let tagDimensions = [];
 let tagSelects = [];
 
 async function loadTagOptions(selectedIds = []) {
-  const response = await api('/api/tags');
+  const response = await api('/api/tags?include_unused=1');
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data.ok) throw new Error(data.error || '标签列表加载失败');
   tagDimensions = data.dimensions || [];
