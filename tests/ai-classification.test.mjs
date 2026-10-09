@@ -21,7 +21,7 @@ test('分类会使用公开书目检索、清理书名、写入三个共享标�
   env.AI = {
     async run() {
       return {
-        response: JSON.stringify({ title: '银河英雄传说', tags: ['科幻', '小说', '科幻'] }),
+        choices: [{ message: { content: JSON.stringify({ title: '银河英雄传说', tags: ['科幻', '小说', '科幻'] }) } }],
         usage: { prompt_tokens: 100, completion_tokens: 20 },
       };
     },

@@ -59,7 +59,7 @@ export async function classifyBook(env, bookId, { force = false } = {}) {
       response_format: { type: 'json_object' },
     });
     usage = normalizeUsage(response?.usage);
-    const result = normalizeResult(response?.response);
+    const result = normalizeResult(responseText(response));
     await replaceTags(env, bookId, result.tags);
     await dbRun(
       env,
@@ -168,11 +168,22 @@ function normalizeUsage(value) {
 }
 
 function normalizeResult(text) {
+  const cleaned = String(text || '')
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/^```(?:json)?\s*|\s*```$/gi, '')
+    .trim();
   let data;
   try {
-    data = JSON.parse(String(text || '').replace(/^```json\s*|\s*```$/g, '').trim());
+    data = JSON.parse(cleaned);
   } catch {
-    throw new Error('AI 返回的 JSON 无法解析');
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start < 0 || end <= start) throw new Error('AI 返回的 JSON 无法解析');
+    try {
+      data = JSON.parse(cleaned.slice(start, end + 1));
+    } catch {
+      throw new Error('AI 返回的 JSON 无法解析');
+    }
   }
   const title = String(data.title || '').trim();
   const tags = [...new Set(Array.isArray(data.tags) ? data.tags.map((tag) => String(tag).trim()).filter((tag) => BOOK_TAGS.includes(tag)) : [])];
@@ -181,4 +192,11 @@ function normalizeResult(text) {
     if (!tags.includes(fallback)) tags.push(fallback);
   }
   return { title, tags: tags.slice(0, 3) };
+}
+
+function responseText(response) {
+  if (typeof response === 'string') return response;
+  if (typeof response?.response === 'string') return response.response;
+  const choice = response?.choices?.[0];
+  return choice?.message?.content || choice?.text || '';
 }
