@@ -10,8 +10,8 @@ export async function onRequestGet(context) {
   const tag = (url.searchParams.get('tag') || '').trim();
   const status = (url.searchParams.get('status') || '').trim();
   const recommended = url.searchParams.get('recommended') === '1';
-  const requestedLimit = Number(url.searchParams.get('limit')) || (recommended ? 9 : 18);
-  const limit = Math.min(requestedLimit, recommended ? 9 : 100);
+  const requestedLimit = Number(url.searchParams.get('limit')) || (recommended ? 3 : 18);
+  const limit = Math.min(requestedLimit, recommended ? 3 : 100);
   const offset = Math.max(Number(url.searchParams.get('offset')) || 0, 0);
 
   // my_* 是当前账号自己的评分/状态，rating_avg 是所有人打分的平均值
@@ -40,9 +40,8 @@ export async function onRequestGet(context) {
 
   // 总数与列表用同一套筛选条件，避免「共 N 本」与实际可翻页数量不一致
   const matchedTotal = (await dbGet(env, `SELECT COUNT(*) AS n ${from}${whereSql}`, user.id, ...filters)).n;
-  const total = recommended ? Math.min(matchedTotal, 9) : matchedTotal;
+  const total = recommended ? Math.min(matchedTotal, 3) : matchedTotal;
 
-  const orderBy = recommended ? 'recommendation_order' : 'recent_order';
   const books = await dbAll(
     env,
     `SELECT b.*,
@@ -53,9 +52,7 @@ export async function onRequestGet(context) {
       COALESCE(mine.status, 'unread') AS my_status,
       COALESCE(mine.is_favorite, 0) AS my_favorite
      ${from}${whereSql}
-     ORDER BY ${orderBy === 'recommendation_order'
-       ? 'COALESCE((SELECT AVG(s.rating) FROM book_user_state s WHERE s.book_id = b.id AND s.rating > 0), 0) DESC, b.created_at DESC, b.id DESC'
-       : 'b.created_at DESC, b.id DESC'}
+     ORDER BY ${recommended ? 'RANDOM()' : 'b.created_at DESC, b.id DESC'}
      LIMIT ? OFFSET ?`,
     user.id,
     ...filters,

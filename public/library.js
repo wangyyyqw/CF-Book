@@ -50,7 +50,7 @@ function cardHtml(b, index) {
 }
 
 async function loadRecommendations() {
-  const res = await api('/api/books?recommended=1&limit=9');
+  const res = await api('/api/books?recommended=1&limit=3');
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) return;
   recommendEl.innerHTML = data.books.map((book, index) => cardHtml(book, index)).join('');

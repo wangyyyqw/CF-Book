@@ -114,7 +114,7 @@ test('按标签筛选，总数同样跟随筛选', async () => {
   assert.deepEqual(data.books[0].tag_categories, { 学科: ['历史'] });
 });
 
-test('推荐接口最多返回九本，并按评分优先', async () => {
+test('推荐接口从全部书籍随机返回最多三本', async () => {
   const env = makeEnv();
   for (let i = 1; i <= 12; i++) addBook(env.DB, { id: `r${i}`, title: `推荐${i}`, created: i });
   env.DB.exec(
@@ -123,11 +123,11 @@ test('推荐接口最多返回九本，并按评分优先', async () => {
   );
 
   const data = await list(env, '?recommended=1&limit=50');
-  assert.equal(data.books.length, 9);
-  assert.equal(data.total, 9, '推荐集合总数最多为九本');
+  assert.equal(data.books.length, 3);
+  assert.equal(data.total, 3, '推荐集合固定最多三本');
   assert.equal(data.hasMore, false);
-  assert.equal(data.books[0].id, 'r4');
-  assert.equal(data.books[1].id, 'r2');
+  assert.equal(new Set(data.books.map((book) => book.id)).size, 3);
+  assert.ok(data.books.every((book) => /^r(?:[1-9]|1[0-2])$/.test(book.id)));
 });
 
 test('收藏与阅读状态按当前账号隔离，总数只看自己的状态', async () => {
