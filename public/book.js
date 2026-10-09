@@ -145,9 +145,13 @@ $('download').addEventListener('click', () => {
     return;
   }
   $('download').disabled = true;
-  $('download-msg').textContent = '正在下载并合并分块…';
+  $('download-msg').textContent = '正在准备下载…';
   downloadBook(uploadId, $('download').dataset.filename, {
+    preferFilePicker: true,
     onMessage: (text) => { $('download-msg').textContent = text; },
+    onProgress: (state) => {
+      $('download-msg').textContent = `已下载 ${state.done}/${state.total} 块（${state.percent.toFixed(0)}%）`;
+    },
   }).catch((error) => {
     $('download-msg').textContent = `下载失败：${error.message}`;
   }).finally(() => { $('download').disabled = false; });

@@ -23,15 +23,50 @@
 
     <main class="shell library-shell">
       <section class="panel">
+        <h2>下载队列</h2>
+        <div class="queue-toolbar">
+          <label>同时下载
+            <select id="concurrency">
+              <option value="1">1 本</option>
+              <option value="2">2 本</option>
+              <option value="3">3 本</option>
+              <option value="4">4 本</option>
+            </select>
+          </label>
+          <button id="pause-all" type="button">全部暂停</button>
+          <button id="resume-all" type="button">全部继续</button>
+          <button id="clear-finished" type="button">清理已结束</button>
+          <span id="queue-summary" class="form-msg"></span>
+        </div>
+        <ul id="download-queue" class="task-list"></ul>
+      </section>
+
+      <section class="panel">
         <h2>已入库任务</h2>
+        <div class="library-bar">
+          <input id="task-search" type="search" placeholder="搜索文件名" />
+          <label class="queue-inline">状态
+            <select id="task-status">
+              <option value="">全部</option>
+              <option value="completed">已入库</option>
+              <option value="active">上传中</option>
+              <option value="aborted">已中止</option>
+            </select>
+          </label>
+          <button id="queue-all-completed" type="button">已入库全部加入队列</button>
+        </div>
         <table id="tasks" class="tasks">
           <thead>
             <tr><th>文件名</th><th>大小</th><th>分块</th><th>状态</th><th></th></tr>
           </thead>
           <tbody></tbody>
         </table>
-        <div id="dprogress" class="progress" hidden></div>
-        <ul id="dlog" class="log"></ul>
+        <p id="tasks-msg" class="form-msg"></p>
+      </section>
+
+      <section class="panel">
+        <h2>下载历史</h2>
+        <ul id="download-history" class="task-list"></ul>
       </section>
     </main>
 

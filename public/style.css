@@ -1239,3 +1239,86 @@ body.library-page.library-dark {
   font-size: 0.78rem;
   color: var(--muted);
 }
+
+/* 传输任务中心：下载队列、上传任务与下载历史共用 */
+.queue-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.9rem;
+}
+
+.queue-toolbar label,
+.queue-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.84rem;
+  color: var(--muted);
+}
+
+.queue-toolbar select,
+.queue-inline select {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  font-family: inherit;
+}
+
+.task-list {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.task-item {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--line);
+  background: rgba(242, 238, 227, 0.5);
+}
+
+.task-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.task-name {
+  overflow: hidden;
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-status {
+  flex: none;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+}
+
+.task-status[data-status="running"] { border-color: var(--accent); color: var(--accent); }
+.task-status[data-status="done"] { color: #2e7d32; border-color: #2e7d32; }
+.task-status[data-status="failed"] { color: var(--accent); border-color: var(--accent); }
+
+.task-meta {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.task-item .progress { height: 6px; }
+
+.task-item .row-actions { justify-content: flex-end; }
+
+.history-item { gap: 0.25rem; }
