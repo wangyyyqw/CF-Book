@@ -12,6 +12,8 @@
 
 ## 二、变更影响范围
 
+- 本次重写 `README.md`，补充 Cloudflare Pages、D1、R2、Telegram、Pages Secrets、首次管理员初始化、本地开发、AI 配置和故障排查流程；新增 `scripts/bootstrap-d1.mjs`，从结构快照和 `data/book_tag_library_v1.json` 生成新库初始化 SQL，不改变线上接口契约。
+- 初始化脚本已在本地 SQLite 验证可生成 5 个维度、878 个标准标签和 82 个别名；README 明确区分新建空库初始化与已有库按迁移状态升级，避免重复执行历史迁移。
 - 标准标签、AI Provider 与 EPUB 封面处理；相关 D1 迁移位于 `migrations/`。
 - 部署者须按自己的 Cloudflare 资源配置 `wrangler.toml` 和 Secrets；仓库不携带生产资源标识。
 - 书库 UI 已调整：导航操作收进右侧菜单；推荐区按响应式列数动态抽取并铺满一行；馆藏改为按响应式列数的四行分页，使用上一页/下一页；详情页共享标签移到评分上方，保存标签与 AI 生成标签统一为同一操作区。书库 API 推荐数量改为按请求值返回。

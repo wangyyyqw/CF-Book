@@ -1,131 +1,293 @@
-# CF-Book 分块传输原型
+# CF-Book
 
-Cloudflare Pages + D1 + Telegram Bot 私有频道的书籍分块上传/下载验证原型。
+基于 Cloudflare Pages、D1、R2 和 Telegram 私有频道的家庭/多人私人书库。系统只负责上传、整理、管理和下载，不提供在线阅读；书籍原文件分块保存在 Telegram，封面保存在 R2。
 
-## 原理
+## 功能
 
-- 浏览器把书籍按 8 MiB 分块，逐块上传到 Pages Functions。
-- Worker 每块转存到 Telegram Bot 私有频道，并把 `message_id`、`file_id`、分块哈希写入 D1。
-- 下载时浏览器逐块从 Worker 拉取（Worker 再从 Telegram 取回），校验分块哈希后在浏览器端合并成完整文件。
-- 所有分块低于 Telegram 云端 Bot API 的 20 MiB 下载限制；书籍原始文件不落 R2，只存 Telegram。
+- 支持 EPUB、PDF、MOBI、AZW3、TXT 和漫画压缩包等文件。
+- 浏览器把文件切成默认 16 MiB 的分块，服务端逐块保存到 Telegram 私有频道，下载时校验并在浏览器端合并。
+- 上传失败或中断后，重新选择同一文件会复用未完成任务，跳过已经保存的分块。
+- 单文件上限 4 GiB；上传并发 5，下载并发 3。实际速度取决于浏览器、网络、Telegram 和 Cloudflare 边缘节点。
+- 自动识别 EPUB/PDF/MOBI 元数据；EPUB 支持流式读取 ZIP、提取内嵌封面并压缩为 WebP，封面保存到 R2。
+- 书库支持分页、搜索、阅读状态筛选、共享标准标签筛选和“无标签”筛选，不会一次加载全部书籍。
+- 评分、阅读状态、收藏按账号分别保存；共享标准标签由成员共同使用，成员可以上传新书。
+- 管理员可以创建成员、停用账号、重置密码和管理书籍。
+- AI 分类先查询公开书目资料，再从标准标签库中选择 3 个标签；支持 Workers AI、OpenAI-compatible 和 Anthropic Messages 自定义接口。
 
-## 目录
+## 架构
 
 ```text
-schema.sql                 D1 表结构（uploads + chunks + books + tags + users + sessions）
-migrations/                D1 增量迁移（含 AI 分类记录与重试保护）
-wrangler.toml              Pages 构建配置（DB / ADMIN_TOKEN / TG 密钥）
-scripts/cleanup-data.mjs   清空已上传数据（Telegram 分块 + D1 记录 + R2 封面），默认空跑
-functions/
-  _middleware.js           CORS、会话鉴权与页面登录跳转
-  utils/                   db / hash / http / auth / telegram 封装
-  api/auth/                登录、注销、当前账号、首次初始化、改密码
-  api/users/               账号管理（管理员）
-  api/upload/              初始化、分块上传、完成、中止、任务列表
-  api/download/            下载清单、单块下载（含哈希校验）
-public/
-  login.html + js          登录页（无账号时自动切换为创建管理员）
-  users.html + js          账号管理页（仅管理员）
-  nav.js / api.js          顶栏账号区与同源请求封装
-  index.html + app.js      上传页（分块 + 进度 + 哈希）
-  download.html + js       下载页（逐块下载 + 本地合并）
-  library.html + js        书库（卡片列表 + 搜索 + 状态筛选）
-  book.html + js           书籍详情（编辑元数据 + 标签 + 评分 + 下载 + 删除）
-tests/                     鉴权、书籍删除等单元测试（npm test）
+浏览器
+  │ HTTPS
+  ▼
+Cloudflare Pages + Pages Functions
+  ├─ D1：账号、会话、书目、分块索引、标签、评分和 AI 记录
+  ├─ R2：封面 WebP
+  └─ Telegram Bot 私有频道：书籍原文件分块
 ```
 
-## 本地运行
+原文件不会写入 R2，也不会由 Worker 整本读入内存。每个 Telegram 分块的消息 ID、文件 ID、大小和哈希保存在 D1。
 
-需要 Node.js 18+（含 `npx wrangler`）与 Cloudflare 账号。
+## 前置条件
+
+部署前需要：
+
+1. 一个 Cloudflare 账号，并安装 Node.js 22 或更高版本（Wrangler 本身支持更低版本，但本仓库的测试使用 `node:sqlite`）。
+2. 一个 Telegram Bot。通过 BotFather 创建后，记下 Bot Token。
+3. 一个私有 Telegram 频道。把 Bot 加入频道并授予管理员权限，至少允许发送消息和删除消息。
+4. 私有频道 ID。通常是 `-100` 开头的数字；不要把它和公开频道用户名混用。
+
+Bot 必须在频道中，而不是只在 BotFather 中创建。若使用群组，也必须确保 Bot 有发送和删除消息的权限；本项目建议使用私有频道保存原文件。
+
+## 获取代码
 
 ```bash
-npm install -g wrangler
-wrangler login
-wrangler d1 create book-library-db     # 复制输出的 database_name 和 database_id
-sed -i '' "s/REPLACE_WITH_YOUR_D1_DATABASE_ID/<你的 database_id>/" wrangler.toml
-wrangler d1 execute book-library-db --file schema.sql --remote
-wrangler pages dev public --d1 DB=book-library-db --binding TG_BOT_TOKEN --binding TG_CHAT_ID --binding ADMIN_TOKEN
+git clone https://github.com/wangyyyqw/CF-Book.git
+cd CF-Book
+npm install
+npx wrangler login
 ```
 
-或在 Cloudflare Dashboard 配置以下环境变量/密钥后部署：
+`npm install` 安装测试和 AI Provider 所需的本地依赖；Wrangler 不需要全局安装。
+
+## 创建 Cloudflare 资源
+
+以下名称只是示例，可以替换成自己的名称：
 
 ```bash
-wrangler pages deploy public
+npx wrangler pages project create cf-book --production-branch main
+npx wrangler d1 create cf-book-db
+npx wrangler r2 bucket create cf-book-covers
 ```
 
-需要的密钥：
+记录 `wrangler d1 create` 输出的 `database_name` 和 `database_id`。然后编辑仓库根目录的 `wrangler.toml`，把占位符替换成自己账号中的资源：
 
-- `TG_BOT_TOKEN`：通过 BotFather 创建的 Bot Token。
-- `TG_CHAT_ID`：私有频道 ID（如 `-1001234567890`），Bot 需加入该频道且有发送权限。
-- `ADMIN_TOKEN`：服务令牌，供脚本与应急使用（请求头 `x-admin-token` 或 `Authorization: Bearer`），权限等同管理员；网页登录走账号会话，不再使用该令牌。
+```toml
+[[d1_databases]]
+binding = "DB"
+database_name = "你的 D1 数据库名称"
+database_id = "你的 D1 database_id"
 
-## 账号系统
+[[r2_buckets]]
+binding = "COVERS"
+bucket_name = "你的 R2 存储桶名称"
+```
 
-- 首个管理员：打开 `/login`，系统检测到没有任何账号时会显示「创建管理员账号」，填完即登录。
-- 角色：`admin` 可编辑/删除书籍、管理账号；`member` 可以上传、浏览与下载，但不能修改书籍基本信息或管理账号。
-- 评分/阅读状态/收藏：存放在 `book_user_state`，每个账号独立一份；收藏与阅读状态可以同时存在。详情页同时显示所有账号的评分、状态与收藏标记，书库评分徽标显示所有评分的平均分。
-- 标签：使用共享的标准标签库，所有登录账号都可以从出版书/网文及对应分类维度中选择；旧 `tags` / `book_tags` 数据不再用于新分类和筛选。
-- 会话：登录后签发 30 天有效的 HttpOnly Cookie（`cfbook_session`），令牌哈希存 D1 `sessions` 表，改密码/停用/删除会吊销其全部会话。
-- 管理员在 `/users` 创建账号、重置密码、切换角色、停用或删除；任何时刻至少保留一个可用管理员，且不能停用/删除自己。
-- 密码使用 PBKDF2-SHA256（10 万次迭代 + 随机盐）存储，不保存明文。
-- 删除书籍（管理员，`/book` 详情页）会一并删除 R2 封面、Telegram 频道里的全部分块消息、`chunks`/`uploads` 记录与个人评分状态，不会留下孤儿文件。顺序是先删封面与频道消息、最后删 D1 记录：任何一步失败都会中止且保留数据库记录，重试即可收敛。
+保留 `DB`、`COVERS` 和 `AI` 这三个绑定名。`wrangler.toml` 只放资源配置，不放 Token、密码或 API Key。
 
-## 清空全部已上传数据
+## 初始化 D1
 
-`scripts/cleanup-data.mjs` 用于把书库恢复成刚部署完的空状态（保留账号表结构，不动 `users`/`sessions` 之外的表定义）：
+### 新建空数据库
+
+当前 `schema.sql` 是可读的结构快照，但历史原因使它只内置部分标准标签。新库请使用仓库提供的生成脚本，它会在被 Git 忽略的 `.wrangler/` 目录生成一次性 SQL，包含当前结构和完整的 878 个标准标签：
 
 ```bash
-node scripts/cleanup-data.mjs          # 空跑，打印将删除的书籍、消息与封面清单
-node scripts/cleanup-data.mjs --yes    # 真正执行
+node scripts/bootstrap-d1.mjs
+npx wrangler d1 execute 你的 D1 数据库名称 --remote \
+  --file .wrangler/cf-book-bootstrap.sql
 ```
 
-执行顺序为 Telegram 分块消息 → D1 记录（`chunks`/`uploads`/`book_user_state`/`book_tags`/`tags`/`books`）→ R2 封面，结束后复核六张表计数是否归零。需要 `.dev.vars` 里有 `TG_BOT_TOKEN`，且 Bot 在频道内拥有删除消息权限。
+初始化完成后可以检查关键数量：
 
-## 部署配置
+```bash
+npx wrangler d1 execute 你的 D1 数据库名称 --remote --command \
+  "SELECT COUNT(*) AS tags FROM standard_tags; SELECT COUNT(*) AS dimensions FROM tag_dimensions;"
+```
 
-部署信息由仓库维护者自行配置。不要在本仓库提交生产账号、数据库标识、部署 URL、密钥或真实书目数据。Cloudflare 资源 ID 应由部署者填入本地配置，运行密钥应使用 Cloudflare Secrets 或未跟踪的本地环境文件。
+结果应为 `878` 个标准标签和 `5` 个维度。生成的 `.wrangler/cf-book-bootstrap.sql` 含有完整的结构和种子数据，不要把它复制到 Git 仓库；它面向新建空库，不要在已有数据库上重复执行。
 
-生产部署状态和书目验收记录不纳入公开文档；请在自己的部署环境中完成验收并安全保存结果。
-- 当前版本支持管理员配置 OpenAI-compatible 或 Anthropic Messages 接口：HTTPS 地址、API Key、获取并选择模型；API Key 使用 AES-GCM 加密保存在 D1，读取配置时不回显密钥。未配置时回落到 Workers AI。
-- 管理员可在每本书详情页单独触发 AI 标签生成；页面可展开查看模型响应、最终标签和密钥轮换游标，不显示密钥内容。
-- AI 分类仅从 878 个标准标签中选出 3 个有序 ID（书籍类型、对应领域/题材、主题/设定）；低置信度结果要求人工审核，不写入自由标签。
+### 已有数据库
 
-## 已修复的缺陷
+不要对已有生产库重复执行 `schema.sql`，也不要无脑执行整个 `migrations/` 目录。仓库同时保留了历史增量迁移和当前结构快照，重复执行部分迁移会出现“重复字段”或“重复标签”。
 
-- `/api/upload/complete` 建档 SQL 占位符少一个，导致 `15 values for 16 columns`，上传到最后一步必 500、书籍永远建不出来。已修正，并由 `tests/sql.test.mjs`（用真实 SQLite `prepare` 扫描全部写库语句）兜住同类错误。
-- 删除书籍原先只清 `books`/`book_tags`/`book_user_state`，`chunks`、`uploads` 与 Telegram 频道里的原文件全部遗留成孤儿。现按「封面 → 频道消息 → D1 记录」顺序清理，任一步失败即中止并保留记录，重试可收敛。
-- 书库列表原先固定只取 100 本且「共 N 本」显示的是本页条数，几千本时会静默丢书。现在接口支持 `offset` 分页并返回真实总数，前端分页加载。
+升级已有库时：
 
-## AI 分类说明与限制
+1. 先备份或在 Cloudflare 的预览/测试数据库验证。
+2. 确认目标库已经执行到哪个迁移文件；D1 不会替项目自动维护本仓库的迁移记录。
+3. 只按编号顺序执行尚未执行的迁移，每个文件只执行一次。迁移文件的完整顺序是 `0002` 至 `0012`；例如确认只缺少最后一项时：
 
-**标准标签分类已实现**：先按书名+作者检索 Google Books/维基/Open Library/豆瓣/可选搜索 API，再将压缩后的公开书目证据与标准标签候选提供给自定义 OpenAI-compatible / Anthropic Messages 或默认 Workers AI。模型必须返回库内三个标签 ID，顺序为书籍类型、领域/题材、主题/设定；服务端再次验证标签状态和维度后才写入 `book_standard_tags`。资料不足或模型要求审核时不写标签。
+   ```bash
+   npx wrangler d1 execute 你的 D1 数据库名称 --remote \
+     --file migrations/0012_humanities_and_web_tags.sql
+   ```
 
-标准标签来源文件为 `data/book_tag_library_v1.json`。新增标签使用新的增量迁移（按序应用 `0008` 至 `0012_humanities_and_web_tags.sql`）；不要重写已应用的历史迁移。应用迁移前应确认目标 D1 已含此前 AI 配置迁移。
+4. 如果目标库已经包含某个迁移提供的字段或标签，跳过该迁移，不要用 `--force` 掩盖错误。
 
-如需接入通用搜索 API，在 Pages 环境变量中设置 `BOOK_SEARCH_API_URL`（可用 `{query}` 占位符，或让程序追加 `q` 参数）和可选的 `BOOK_SEARCH_API_KEY`。Google Books 如需自己的配额可设置 `GOOGLE_BOOKS_API_KEY`。接口结果支持 `results`、`items` 或 `data` 数组，每条记录可提供 `title`/`name`、`author`/`authors`、`snippet`/`description`、`keywords`/`tags`/`categories` 字段；未配置或请求失败不会阻塞其他书目源和 AI 分类。
+### 迁移核对
 
-配置通用 AI：登录管理员账号后打开 `/users`，选择协议，填入服务商提供的 HTTPS API 根地址与 API Key，点击“获取模型”并选择模型后保存。OpenAI-compatible 地址应为兼容 Chat Completions 的 API 根地址；Anthropic Messages 地址应对应服务商要求的根地址。自定义 Provider 下批处理每次只处理一本书，避免单次批量调用集中消耗服务商额度。API Key 不会由配置读取接口返回；`AI_CONFIG_SECRET` 优先用于派生 AES-GCM 加密密钥，否则使用 `ADMIN_TOKEN`。轮换加密秘密后，必须重新保存 API Key。
+可以使用下面的查询确认常见结构是否存在：
 
-结论：AI 分类会优先使用公开书目资料，并从标准标签库中选取 3 个匹配项；查不到书目证据或需要审核时不写入标签。结果仍是辅助整理，不等同于人工编目，管理员应复核书名和标签。
+```bash
+npx wrangler d1 execute 你的 D1 数据库名称 --remote --command \
+  "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;"
+npx wrangler d1 execute 你的 D1 数据库名称 --remote --command \
+  "PRAGMA table_info(ai_classifications);"
+```
 
-## 验收清单（原型验证）
+如果无法确认旧库的迁移状态，最稳妥的做法是先创建一个新的 D1，使用“新建空数据库”的初始化流程，再迁移已经确认的数据；不要直接在生产库试错。
 
-- [ ] 上传 100 MB 文件：分块逐块上传，进度到 100%，状态变为 completed。
-- [ ] 上传 1 GB 文件：全程不把整本书放进 Worker 内存，前端也不一次读入内存。
-- [ ] 中断续传：上传中途刷新/中止后，再次初始化同一文件并跳过已上传分块。
-- [ ] 分块哈希：D1 中每个分块有 `sha256` 且与 Telegram 取回内容一致。
-- [ ] 下载合并：下载页逐块拉取、校验、合并，文件 SHA-256 与上传时一致。
-- [ ] 失败重试：断网或 Telegram 429 时，失败分块可单独重试。
+## 配置 Pages Secrets
+
+不要把以下内容写进 `wrangler.toml`、README、前端代码或 Git 提交。每条命令会交互式要求输入值：
+
+```bash
+npx wrangler pages secret put TG_BOT_TOKEN --project-name cf-book
+npx wrangler pages secret put TG_CHAT_ID --project-name cf-book
+npx wrangler pages secret put ADMIN_TOKEN --project-name cf-book
+```
+
+必填配置：
+
+| 名称 | 作用 |
+| --- | --- |
+| `TG_BOT_TOKEN` | Telegram Bot Token。泄露后必须立即在 BotFather 撤销并重新生成。 |
+| `TG_CHAT_ID` | 保存分块的私有频道 ID，例如 `-100...`。 |
+| `ADMIN_TOKEN` | 首次创建管理员账号时使用的服务令牌。建议使用至少 32 字节随机值。 |
+
+生成随机服务令牌示例：
+
+```bash
+openssl rand -hex 32
+```
+
+可选配置：
+
+| 名称 | 作用 |
+| --- | --- |
+| `AI_CONFIG_SECRET` | 加密自定义 AI API Key 的独立秘密。未设置时使用 `ADMIN_TOKEN` 派生加密密钥。更换后需要重新保存 AI 配置。 |
+| `AI_DAILY_LIMIT` | Workers AI 每日估算 Neurons 上限，默认 `10000`。自定义 AI Provider 不受该 Neurons 估算限制，但仍受供应商限流。 |
+| `GOOGLE_BOOKS_API_KEY` | 可选的 Google Books API Key。 |
+| `BOOK_SEARCH_API_URL` | 可选通用搜索 API 地址，支持 `{query}` 占位符或 `q` 参数。 |
+| `BOOK_SEARCH_API_KEY` | 可选通用搜索 API Key。 |
+| `SEARCH_API_URL` / `SEARCH_API_KEY` | 上述搜索配置的旧名称，只有未设置新名称时才会使用。 |
+
+如果使用自定义 AI Provider，API Key 在服务端以 AES-GCM 加密写入 D1，不会通过配置读取接口返回。
+
+## 部署
+
+确认 `wrangler.toml` 中的 D1/R2 绑定已经替换为真实资源后，从仓库根目录部署：
+
+```bash
+npx wrangler pages deploy public --project-name cf-book
+```
+
+Pages Functions 会随项目部署。部署后打开 Wrangler 输出的 `*.pages.dev` 地址，或在 Cloudflare Pages 项目中绑定自己的域名。
+
+建议首次部署后先检查：
+
+```bash
+npx wrangler pages deployment list --project-name cf-book
+```
+
+然后访问 `/login`。如果 D1 中还没有账号，页面会显示“创建管理员账号”。输入刚才设置的 `ADMIN_TOKEN`、管理员用户名和密码后，系统会创建第一个管理员并直接登录。之后的正常登录只使用账号密码和 HttpOnly 会话 Cookie，不再输入服务令牌。
+
+## 本地开发
+
+复制本地变量模板：
+
+```bash
+cp .dev.vars.example .dev.vars
+```
+
+编辑 `.dev.vars`，填入只用于本机开发的 Bot、频道和服务令牌。该文件已被 `.gitignore` 忽略，不能提交。
+
+为本地 D1 生成完整初始化 SQL 并执行：
+
+```bash
+node scripts/bootstrap-d1.mjs
+npx wrangler d1 execute cf-book-db --local \
+  --file .wrangler/cf-book-bootstrap.sql
+```
+
+启动 Pages 本地环境：
+
+```bash
+npx wrangler pages dev public \
+  --d1 DB=cf-book-db \
+  --r2 COVERS=cf-book-covers \
+  --ai AI
+```
+
+本地打开 Wrangler 输出的地址，通常是 `http://localhost:8788`。如果不希望本地测试写入真实 Telegram 频道，请使用专门的测试 Bot 和测试频道。
+
+## 首次使用
+
+1. 打开 `/login`，使用 `ADMIN_TOKEN` 创建首个管理员。
+2. 进入“账号管理”，为家庭成员创建 `member` 账号。
+3. 进入上传页选择书籍；批量上传会按队列逐本处理。
+4. 上传完成后，书籍原文件在 Telegram 私有频道，封面在 R2，书目索引在 D1。
+5. 进入书籍详情页检查书名、作者、封面和标准标签。
+
+管理员服务令牌不是日常登录密码，也不应该发给成员。若首个管理员已经创建，`/api/auth/setup` 会拒绝再次初始化。
+
+## AI 分类
+
+标准标签库来自 `data/book_tag_library_v1.json`，当前包含 5 个维度和 878 个标签。每本书的标准分类固定为三项：
+
+- 出版书：`出版书 + 学科/领域 + 主题/内容`
+- 网文：`网文 + 题材 + 情节设定/核心元素`
+
+管理员可以在“账号管理”配置自定义 AI：选择 `OpenAI-compatible` 或 `Anthropic Messages`，填入 HTTPS 请求根地址和 API Key，点击“获取模型”，选择模型并保存。分类时服务端会：
+
+1. 使用书名、作者和摘要查询 Google Books、中文维基、Open Library、豆瓣及可选搜索 API。
+2. 压缩公开书目信息和候选标签，发送给已配置的 AI。
+3. 验证模型返回的三个标签 ID、维度顺序和 `active` 状态。
+4. 只把通过验证的标签写入共享标签关系。
+
+资料不足、模型返回格式错误或标签维度不匹配时，分类会失败并保留错误记录，不会写入自由标签。AI 结果是辅助整理，仍应人工抽查。
+
+## 测试
+
+```bash
+npm test
+git diff --check
+```
+
+测试使用真实 SQLite 语句检查、鉴权、分页、标签、上传续传、封面和 AI Provider 等行为；测试不会连接生产 D1、Telegram 或外部 AI 服务。
+
+## 清空测试数据
+
+`scripts/cleanup-data.mjs` 会清理 Telegram 分块消息、D1 书籍数据和 R2 封面，但不会删除账号表结构。默认只预览：
+
+```bash
+node scripts/cleanup-data.mjs
+node scripts/cleanup-data.mjs --yes
+```
+
+`--yes` 会真实删除数据且不可恢复。脚本需要 `.dev.vars` 中的 `TG_BOT_TOKEN`，并要求 Bot 能删除频道消息；不要对生产书库直接执行，除非已经确认删除范围和备份。
+
+## 常见问题
+
+### 页面要求输入“初始服务令牌”
+
+这是首次创建管理员的校验，不是普通登录。确认输入的值与 Pages Secret `ADMIN_TOKEN` 完全一致，且请求发往当前部署对应的 Pages 项目。首个管理员创建成功后刷新 `/login`，页面应切换为普通登录。
+
+### Bot 搜索不到或上传失败
+
+Bot 不需要被搜索来登录。把 Bot 用户名添加为私有频道管理员，并确认 Bot 没有被限制发送/删除消息；`TG_CHAT_ID` 必须是私有频道数字 ID。
+
+### 上传失败并返回 HTML 或 `Unexpected token '<'`
+
+这通常是错误的部署地址、旧部署仍在缓存，或 Pages Functions 没有随静态资源部署。先确认使用 `npx wrangler pages deploy public --project-name cf-book` 从仓库根目录部署，并检查部署列表；不要把 `public` 单独复制到其他静态托管服务。
+
+### 封面没有显示
+
+先检查 EPUB 是否存在 OPF 封面声明、封面资源路径是否有效，以及上传日志是否显示“识别到内嵌封面”。即使 EPUB 有封面，也可能是损坏图片、外链图片或非标准目录结构；详情页可以手动上传封面。封面提取失败不会阻止原书入库。
+
+### 自定义 AI 获取模型失败
+
+OpenAI-compatible 地址必须是供应商要求的 HTTPS API 根地址，通常形如 `https://example.com/v1`；Anthropic 地址必须支持 `GET /models` 或供应商声明的模型列表接口。系统不跟随重定向，也不允许本机、内网和带查询参数的地址。请直接填写最终 API 地址，并核对 API Key 权限和供应商限流。
+
+## 安全注意事项
+
+- 本仓库不应提交 `TG_BOT_TOKEN`、`ADMIN_TOKEN`、AI API Key、生产 D1/R2 标识、`.dev.vars` 或真实书目数据。
+- 用户在聊天、截图、终端日志或提交历史中暴露过的 Token 都应视为已泄露，立即撤销并重新生成。
+- Telegram 频道是原文件存储位置；删除书籍会尝试删除频道中的分块消息、D1 索引和 R2 封面，操作前应保留必要备份。
+- Cloudflare、Telegram 和第三方 AI 的费用、速率限制、可用区域及数据保留政策由对应服务商决定。
 
 ## 已知限制
 
-- 已实现：传输链路、书籍元数据/标签/评分/搜索、书库分页、自动识别书名作者（EPUB/PDF/MOBI）、EPUB 封面流式提取+压缩、上传/下载并发、账号与角色、按用户隔离的评分/阅读状态、Workers AI 书名清理与 3 个共享标签、每日 AI 用量面板。尚未实现：断点续传。
-- 上传默认并发 5 个分块、下载默认并发 3 个分块，每块 16 MiB；可在 `app.js` 的 `UPLOAD_CONCURRENCY` 与 `download.js` 的 `DOWNLOAD_CONCURRENCY` 调整。
-- 上传整书 SHA-256 对 >1GB 文件跳过（分块哈希兜底）；封面在浏览器压缩为 WebP（最长边 500px，质量 0.8）。
-- 浏览器端整书哈希计算与大文件合并会占用内存，1 GB 以上文件建议后续改用流式写入（File System Access API / OPFS）。
-- 断点续传为“重新初始化 + 跳过已上传分块”，后续可升级为按 `uploadId` 续传。
-
-## 待决问题
-
-1. **分类质量复核**：公开书目匹配质量取决于原始书名/作者元数据；AI 结果仍需管理员抽查。
-2. **清空已上传数据**：`scripts/cleanup-data.mjs` 已就绪，涉及真实书籍，删除不可恢复，执行前必须确认。
+- 浏览器端对大文件计算整书哈希和下载合并仍可能占用较多内存；超过 1 GiB 的上传会跳过整书哈希，仅使用分块哈希校验。
+- 断点续传是“重新初始化同一文件并跳过已保存分块”，不是服务端后台队列；清除浏览器文件或改变文件名、大小、哈希后无法复用任务。
+- Telegram 分块下载、Cloudflare Pages 请求时长和浏览器网络状况会影响大文件传输速度。
+- 自动元数据识别和 AI 分类都可能需要人工复核，不能替代专业编目。
