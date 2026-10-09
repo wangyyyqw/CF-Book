@@ -24,7 +24,10 @@
           <label>ISBN<input id="f-isbn" /></label>
           <label>语言<input id="f-language" /></label>
           <label>格式<input id="f-format" /></label>
-          <label>标签分类<input id="f-tags" placeholder="用逗号分隔，如 武侠, 历史" /></label>
+          <fieldset id="standard-tags-picker" class="standard-tags-picker">
+            <legend>标准标签（依次选择书籍类型、领域/题材、主题/设定）</legend>
+            <div id="standard-tag-selects"></div>
+          </fieldset>
         </div>
         <div class="actions-row">
           <button id="save">保存修改</button>

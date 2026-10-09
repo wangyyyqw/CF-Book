@@ -53,7 +53,7 @@
 
       <section class="panel">
         <h2>AI 书名与标签整理</h2>
-        <p class="form-msg">分类会用书名和作者并行查询 Google Books、维基、Open Library、豆瓣，以及已配置的搜索 API，抽取简介、分类和关键词后压缩成短参考信息，再交给 Workers AI 清理书名并生成 3 个共享标签；不会上传书籍原文件。每日额度按模型返回 token 估算，最终账单以 Cloudflare 控制台为准。</p>
+        <p class="form-msg">分类会先用书名和作者查询公开书目并抽取简介、分类和关键词，再由下方已配置的 AI 清理书名并生成 3 个共享标签；若未配置则使用 Workers AI。不会上传书籍原文件。每日用量按模型 token 估算，外部模型费用以服务商账单为准。</p>
         <div class="ai-usage-grid" id="ai-usage">
           <span>正在读取今日额度…</span>
         </div>
@@ -66,19 +66,24 @@
       </section>
 
       <section class="panel">
-        <h2>NVIDIA 标签模型</h2>
-        <p class="form-msg">可手动填写 NVIDIA API 密钥（每行一个，最多 10 个），系统会加密保存并轮换调用。密钥仅在此处提交给 CF-Book 服务，不会返回明文；保存新密钥将替换当前密钥列表。NVIDIA 额度和可用模型以官方账户页面为准。</p>
-        <form id="nvidia-form" class="inline-form">
-          <select id="nvidia-model-select">
-            <option value="deepseek-ai/deepseek-v4.1-flash">DeepSeek V4.1 Flash（推荐）</option>
-            <option value="custom">自定义模型 ID</option>
+        <h2>自定义 AI 接口</h2>
+        <p class="form-msg">支持 OpenAI-compatible 和 Anthropic Messages（an）协议。API Key 仅发送到 CF-Book 并以密文保存；“获取模型”只请求模型列表，不调用生成接口。</p>
+        <form id="provider-form" class="inline-form">
+          <select id="provider-format" required>
+            <option value="openai">OpenAI-compatible</option>
+            <option value="anthropic">Anthropic Messages（an）</option>
           </select>
-          <input id="nvidia-model-custom" placeholder="例如：厂商/模型名称" hidden />
-          <textarea id="nvidia-keys" rows="4" placeholder="nvapi-...（每行一个密钥；留空可清除 NVIDIA 配置并恢复 Workers AI）" autocomplete="off" spellcheck="false"></textarea>
-          <button id="nvidia-save" type="submit">保存 NVIDIA 设置</button>
-          <span id="nvidia-status" class="form-msg"></span>
+          <input id="provider-base-url" type="url" placeholder="HTTPS API 地址，例如 https://api.example.com/v1" autocomplete="url" required />
+          <input id="provider-api-key" type="password" placeholder="API Key（已保存时留空表示不更换）" autocomplete="new-password" />
+          <div class="actions-row">
+            <button id="provider-discover" type="button">获取模型</button>
+            <select id="provider-model" required><option value="">先获取模型</option></select>
+            <button id="provider-save" type="submit">保存 AI 配置</button>
+            <button id="provider-delete" type="button">清除配置</button>
+          </div>
+          <span id="provider-status" class="form-msg" aria-live="polite"></span>
         </form>
-        <div id="nvidia-current" class="form-msg">正在读取 NVIDIA 设置…</div>
+        <div id="provider-current" class="form-msg">正在读取 AI 设置…</div>
       </section>
 
       <section class="panel">

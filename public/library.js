@@ -22,7 +22,7 @@ function escapeHtml(s) {
 }
 
 function cardHtml(b, index) {
-  const tagList = (b.tags || '').split(',').filter(Boolean);
+  const tagList = (b.tag_details || []).map((tag) => tag.name);
   const tags = tagList.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join('');
   // 徽标显示所有人打分的平均分，胶囊显示当前账号自己的阅读状态
   const count = Number(b.rating_count) || 0;
@@ -61,12 +61,12 @@ async function loadTags() {
   const res = await api('/api/tags');
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) return;
-  for (const group of data.categories || []) {
+  for (const group of data.dimensions || []) {
     const optgroup = document.createElement('optgroup');
-    optgroup.label = group.label;
+    optgroup.label = group.name_zh;
     for (const tag of group.tags || []) {
       const option = document.createElement('option');
-      option.value = tag.name;
+      option.value = tag.tag_id;
       option.textContent = `${tag.name}（${tag.count}）`;
       optgroup.appendChild(option);
     }

@@ -180,15 +180,17 @@ export async function extractCoverFromMeta(meta) {
     }
 
     if (!coverName) return null;
-    const decodedCoverName = decodeZipHref(coverName);
-    const normalized = decodedCoverName.replace(/^\.\//, '');
-    // 封面 href 相对 OPF 所在目录；也兼容已带目录的写法
-    const candidates = [normalized, meta._opfDir + normalized, meta._opfDir.replace(/\/$/, '') + '/' + normalized];
-    const entry = entries.find((e) => candidates.includes(e.name) || candidates.includes(e.name.replace(/\\/g, '/')));
+    const decodedCoverName = decodeZipHref(coverName).replace(/\\/g, '/');
+    // EPUB manifest href 相对 OPF 目录，允许 ../ 指向压缩包根目录。
+    const candidates = new Set([
+      normalizeZipPath(decodedCoverName),
+      normalizeZipPath(`${meta._opfDir}${decodedCoverName}`),
+    ]);
+    const entry = entries.find((e) => candidates.has(normalizeZipPath(e.name)));
     if (!entry) return null;
 
     const bytes = await readEntry(file, entry);
-    const extension = normalized.match(/\.(png|webp|jpe?g|gif)$/i)?.[1]?.toLowerCase();
+    const extension = decodedCoverName.match(/\.(png|webp|jpe?g|gif)$/i)?.[1]?.toLowerCase();
     const mime = extension
       ? { png: 'image/png', webp: 'image/webp', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif' }[extension]
       : 'image/jpeg';
@@ -232,6 +234,16 @@ function resolvePath(pageName, href) {
     else base.push(part);
   }
   return base.join('/');
+}
+
+function normalizeZipPath(path) {
+  const parts = [];
+  for (const part of path.replace(/\\/g, '/').split('/')) {
+    if (!part || part === '.') continue;
+    if (part === '..') parts.pop();
+    else parts.push(part);
+  }
+  return parts.join('/');
 }
 
 function escapeRe(s) {

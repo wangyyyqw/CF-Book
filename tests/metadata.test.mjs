@@ -46,3 +46,20 @@ test('封面 href 的 URI 编码解码后匹配 ZIP 条目', async () => {
   assert.equal(cover?.mime, 'image/jpeg');
   assert.deepEqual(cover?.bytes, expected);
 });
+
+test('封面 href 使用 ../ 返回 EPUB 压缩包根目录时仍可提取', async () => {
+  const expected = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+  const files = {
+    mimetype: new Uint8Array(strToU8('application/epub+zip')),
+    'META-INF/container.xml': strToU8(
+      '<container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>'
+    ),
+    'OEBPS/content.opf': strToU8(
+      '<package><manifest><item id="cover" href="../cover.jpg?x=1"/></manifest><meta name="cover" content="cover"/></package>'
+    ),
+    'cover.jpg': expected,
+  };
+  const cover = await extractCoverFromFile(new File([zipSync(files)], 'parent-cover.epub'), 'parent-cover.epub');
+  assert.equal(cover?.mime, 'image/jpeg');
+  assert.deepEqual(cover?.bytes, expected);
+});

@@ -10,6 +10,16 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 export function createD1() {
   const db = new DatabaseSync(':memory:');
   db.exec(readFileSync(join(ROOT, 'schema.sql'), 'utf8'));
+  const tagLibrary = JSON.parse(readFileSync(join(ROOT, 'data/book_tag_library_v1.json'), 'utf8'));
+  const dimension = db.prepare('INSERT INTO tag_dimensions (dimension, name_zh, description) VALUES (?, ?, ?)');
+  for (const item of tagLibrary.dimensions) dimension.run(item.dimension, item.name_zh, item.description);
+  const tag = db.prepare(`INSERT OR IGNORE INTO standard_tags
+    (tag_id, name, dimension, category, parent_id, description, status) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+  const alias = db.prepare('INSERT OR IGNORE INTO standard_tag_aliases (tag_id, alias) VALUES (?, ?)');
+  for (const item of tagLibrary.tags) {
+    tag.run(item.tag_id, item.name, item.dimension, item.category, item.parent_id, item.description, item.status);
+    for (const value of item.aliases) alias.run(item.tag_id, value);
+  }
 
   return {
     exec(sql) {

@@ -1,6 +1,6 @@
 import { json } from '../utils/http.js';
 import { dbAll, dbGet } from '../utils/db.js';
-import { TAG_CATEGORY_LABELS, tagCategory } from '../utils/tag-catalog.js';
+import { standardTagDetails } from '../utils/standard-tags.js';
 
 export async function onRequestGet(context) {
   const { request, env } = context;
@@ -27,7 +27,7 @@ export async function onRequestGet(context) {
     filters.push(like, like, like);
   }
   if (tag) {
-    where.push('b.id IN (SELECT book_id FROM book_tags bt JOIN tags t ON t.id = bt.tag_id WHERE t.name = ?)');
+    where.push('b.id IN (SELECT book_id FROM book_standard_tags WHERE tag_id = ?)');
     filters.push(tag);
   }
   if (status) {
@@ -45,7 +45,7 @@ export async function onRequestGet(context) {
   const books = await dbAll(
     env,
     `SELECT b.*,
-      (SELECT group_concat(t.name, ',') FROM book_tags bt JOIN tags t ON t.id = bt.tag_id WHERE bt.book_id = b.id) AS tags,
+      (SELECT group_concat(t.name, ',') FROM book_standard_tags bt JOIN standard_tags t ON t.tag_id = bt.tag_id WHERE bt.book_id = b.id) AS tags,
       (SELECT ROUND(AVG(s.rating), 1) FROM book_user_state s WHERE s.book_id = b.id AND s.rating > 0) AS rating_avg,
       (SELECT COUNT(*) FROM book_user_state s WHERE s.book_id = b.id AND s.rating > 0) AS rating_count,
       COALESCE(mine.rating, 0) AS my_rating,
@@ -61,9 +61,10 @@ export async function onRequestGet(context) {
   );
 
   for (const book of books) {
-    book.tag_categories = (book.tags || '').split(',').filter(Boolean).reduce((groups, name) => {
-      const category = tagCategory(name);
-      (groups[TAG_CATEGORY_LABELS[category]] ||= []).push(name);
+    const details = await standardTagDetails(env, book.id);
+    book.tag_details = details;
+    book.tag_categories = details.reduce((groups, tag) => {
+      (groups[tag.dimension] ||= []).push(tag.name);
       return groups;
     }, {});
   }

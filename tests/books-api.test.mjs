@@ -102,16 +102,29 @@ test('按标签筛选，总数同样跟随筛选', async () => {
   const env = makeEnv();
   addBook(env.DB, { id: 'b1', title: '书1', created: 1 });
   addBook(env.DB, { id: 'b2', title: '书2', created: 2 });
-  env.DB.exec(
-    `INSERT INTO tags (id, name) VALUES (1, '历史'), (2, '小说');
-     INSERT INTO book_tags (book_id, tag_id) VALUES ('b1', 1), ('b2', 2);`
-  );
+  env.DB.exec(`INSERT INTO book_standard_tags (book_id, tag_id) VALUES ('b1', 'PUB_FIELD_0045'), ('b2', 'PUB_FIELD_0049');`);
 
-  const data = await list(env, '?tag=历史');
+  const data = await list(env, '?tag=PUB_FIELD_0045');
   assert.deepEqual(data.books.map((b) => b.id), ['b1']);
   assert.equal(data.total, 1);
-  assert.deepEqual(data.books[0].tags, '历史');
-  assert.deepEqual(data.books[0].tag_categories, { 学科: ['历史'] });
+  assert.deepEqual(data.books[0].tags, '历史学');
+  assert.deepEqual(data.books[0].tag_categories, { pub_field: ['历史学'] });
+});
+
+test('不合法标签 ID 不会先创建空标签书籍', async () => {
+  const { onRequestPost } = await import('../functions/api/books/[id].js');
+  const env = makeEnv();
+  const response = await onRequestPost({
+    env,
+    request: new Request('https://example.com/api/books', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: '不应写入', tagIds: ['BOOK_TYPE_0001', 'WEB_GENRE_0005', 'PUB_TOPIC_0088'] }),
+    }),
+    data: { user: { id: 'u1', username: 'admin', role: 'admin' } },
+  });
+  assert.equal(response.status, 400);
+  const count = await env.DB.prepare('SELECT COUNT(*) AS count FROM books').first();
+  assert.equal(count.count, 0);
 });
 
 test('推荐接口从全部书籍随机返回最多三本', async () => {

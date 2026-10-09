@@ -1,25 +1,19 @@
 import { json, err } from '../../utils/http.js';
 import { dbGet, dbAll, dbRun, nowSec } from '../../utils/db.js';
 import { requireAdmin } from '../../utils/auth.js';
-import { parseTags } from '../../utils/books.js';
-import { replaceTags } from '../../utils/tags.js';
 import { tgDeleteMessage } from '../../utils/tg.js';
-import { TAG_CATEGORY_LABELS, tagCategory } from '../../utils/tag-catalog.js';
+import { standardTagDetails, validateTagIdList, replaceStandardTags } from '../../utils/standard-tags.js';
 
 export async function onRequestGet(context) {
   const { env, params } = context;
   const me = context.data.user;
   const book = await dbGet(env, 'SELECT * FROM books WHERE id = ?', params.id);
   if (!book) return err('书籍不存在', 404);
-  const tags = await dbAll(
-    env,
-    'SELECT t.name FROM book_tags bt JOIN tags t ON t.id = bt.tag_id WHERE bt.book_id = ? ORDER BY t.name',
-    params.id
-  );
-  book.tags = tags.map((t) => t.name);
+  const tags = await standardTagDetails(env, params.id);
+  book.tag_details = tags;
+  book.tags = tags.map((tag) => tag.name);
   book.tag_categories = tags.reduce((groups, tag) => {
-    const category = tagCategory(tag.name);
-    (groups[TAG_CATEGORY_LABELS[category]] ||= []).push(tag.name);
+    (groups[tag.dimension] ||= []).push(tag.name);
     return groups;
   }, {});
 
@@ -74,6 +68,13 @@ export async function onRequestPost(context) {
     sha256: upload ? upload.sha256 : String(body.sha256 || ''),
   };
 
+  let tagIds = null;
+  if (body.tagIds != null) {
+    const validated = await validateTagIdList(env, body.tagIds);
+    if (validated.error) return err(validated.error);
+    tagIds = validated.tagIds;
+  }
+
   await dbRun(
     env,
     `INSERT INTO books
@@ -98,9 +99,7 @@ export async function onRequestPost(context) {
     now
   );
 
-  const parsedTags = parseTags(body.tags);
-  if (parsedTags.error) return err(parsedTags.error);
-  await replaceTags(env, id, parsedTags.tags);
+  if (tagIds) await replaceStandardTags(env, id, tagIds);
   return json({ ok: true, id, book: { id, ...fields } });
 }
 
@@ -114,6 +113,9 @@ export async function onRequestPut(context) {
 
   const existing = await dbGet(env, 'SELECT * FROM books WHERE id = ?', params.id);
   if (!existing) return err('书籍不存在', 404);
+
+  const validatedTags = body.tagIds != null ? await validateTagIdList(env, body.tagIds) : null;
+  if (validatedTags?.error) return err(validatedTags.error);
 
   const upd = {
     title: String(body.title ?? existing.title).trim(),
@@ -142,11 +144,7 @@ export async function onRequestPut(context) {
     params.id
   );
 
-  if (body.tags != null) {
-    const parsed = parseTags(body.tags);
-    if (parsed.error) return err(parsed.error);
-    await replaceTags(env, params.id, parsed.tags);
-  }
+  if (validatedTags) await replaceStandardTags(env, params.id, validatedTags.tagIds);
   return json({ ok: true });
 }
 
@@ -183,6 +181,7 @@ export async function onRequestDelete(context) {
   }
   await dbRun(env, 'DELETE FROM book_user_state WHERE book_id = ?', params.id);
   await dbRun(env, 'DELETE FROM book_tags WHERE book_id = ?', params.id);
+  await dbRun(env, 'DELETE FROM book_standard_tags WHERE book_id = ?', params.id);
   await dbRun(env, 'DELETE FROM books WHERE id = ?', params.id);
   return json({ ok: true });
 }

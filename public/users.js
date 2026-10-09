@@ -7,51 +7,86 @@ let me = null;
 
 const ROLE_LABEL = { admin: '管理员', member: '成员' };
 
-async function loadNvidiaConfig() {
-  const status = $('nvidia-current');
-  const res = await api('/api/ai/nvidia');
+async function loadProviderConfig() {
+  const status = $('provider-current');
+  const res = await api('/api/ai/provider');
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) {
-    status.textContent = `NVIDIA 设置读取失败：${data.error || res.status}`;
+    status.textContent = `AI 设置读取失败：${data.error || res.status}`;
     return;
   }
-  const select = $('nvidia-model-select');
-  const custom = $('nvidia-model-custom');
-  if ([...select.options].some((option) => option.value === data.model)) select.value = data.model;
-  else {
-    select.value = 'custom';
-    custom.value = data.model;
-  }
-  custom.hidden = select.value !== 'custom';
-  status.textContent = data.keys.length
-    ? `已启用 ${data.model} · ${data.keys.length} 把密钥：${data.keys.join('、')}`
-    : '尚未配置 NVIDIA 密钥，分类使用 Workers AI。';
+  $('provider-format').value = data.format;
+  $('provider-base-url').value = data.baseUrl;
+  $('provider-model').innerHTML = data.model
+    ? `<option value="${escapeHtml(data.model)}">${escapeHtml(data.model)}</option>`
+    : '<option value="">先获取模型</option>';
+  status.textContent = data.configured
+    ? `已启用 ${data.format === 'anthropic' ? 'Anthropic Messages' : 'OpenAI-compatible'} · ${data.model} · API Key 已保存`
+    : '尚未配置自定义接口，当前使用 Workers AI。';
 }
 
-async function saveNvidiaConfig(event) {
-  event.preventDefault();
-  const select = $('nvidia-model-select');
-  const model = select.value === 'custom' ? $('nvidia-model-custom').value.trim() : select.value;
-  const keys = $('nvidia-keys').value.split(/\r?\n/).map((key) => key.trim()).filter(Boolean);
-  $('nvidia-save').disabled = true;
-  $('nvidia-status').textContent = '正在加密保存…';
+async function discoverProviderModels() {
+  $('provider-discover').disabled = true;
+  $('provider-status').textContent = '正在安全请求模型列表…';
   try {
-    const res = await api('/api/ai/nvidia', {
-      method: 'PUT',
+    const res = await api('/api/ai/provider', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, keys }),
+      body: JSON.stringify({
+        format: $('provider-format').value,
+        baseUrl: $('provider-base-url').value.trim(),
+        apiKey: $('provider-api-key').value.trim(),
+      }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok) {
-      $('nvidia-status').textContent = `保存失败：${data.error || res.status}`;
+      $('provider-status').textContent = `获取模型失败：${data.error || res.status}`;
       return;
     }
-    $('nvidia-keys').value = '';
-    $('nvidia-status').textContent = '设置已保存；密钥仅以遮罩形式显示。';
-    await loadNvidiaConfig();
+    const select = $('provider-model');
+    select.innerHTML = data.models.map((model) => `<option value="${escapeHtml(model)}">${escapeHtml(model)}</option>`).join('');
+    $('provider-status').textContent = `已找到 ${data.models.length} 个模型，选择一个并保存配置。`;
+  } catch (error) {
+    $('provider-status').textContent = `获取模型失败：${error.message || error}`;
   } finally {
-    $('nvidia-save').disabled = false;
+    $('provider-discover').disabled = false;
   }
+}
+
+async function saveProviderConfig(event) {
+  event.preventDefault();
+  $('provider-save').disabled = true;
+  $('provider-status').textContent = '正在加密保存配置…';
+  try {
+    const res = await api('/api/ai/provider', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        format: $('provider-format').value,
+        baseUrl: $('provider-base-url').value.trim(),
+        model: $('provider-model').value,
+        apiKey: $('provider-api-key').value.trim(),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      $('provider-status').textContent = `保存失败：${data.error || res.status}`;
+      return;
+    }
+    $('provider-api-key').value = '';
+    $('provider-status').textContent = '配置已保存；API Key 只在服务端加密保存。';
+    await loadProviderConfig();
+  } finally {
+    $('provider-save').disabled = false;
+  }
+}
+
+async function deleteProviderConfig() {
+  if (!confirm('清除自定义 AI 配置？后续分类将恢复使用 Workers AI。')) return;
+  const res = await api('/api/ai/provider', { method: 'DELETE' });
+  const data = await res.json().catch(() => ({}));
+  $('provider-status').textContent = res.ok && data.ok ? '已清除自定义 AI 配置。' : `清除失败：${data.error || res.status}`;
+  if (res.ok && data.ok) await loadProviderConfig();
 }
 
 async function loadAiUsage() {
@@ -74,7 +109,7 @@ async function loadAiUsage() {
 async function classifyBatch({ force = false } = {}) {
   $('ai-classify').disabled = true;
   $('ai-reclassify-all').disabled = true;
-  $('ai-msg').textContent = force ? '正在重新分类全部书籍…' : '正在整理，每次最多处理 10 本…';
+  $('ai-msg').textContent = force ? '正在重新分类全部书籍…' : '正在整理…';
   try {
     let processed = 0;
     let failed = 0;
@@ -97,6 +132,7 @@ async function classifyBatch({ force = false } = {}) {
       await loadAiUsage();
       if (!force || data.processed < data.batchLimit) break;
       offset += data.processed;
+      await new Promise((resolve) => setTimeout(resolve, 1100));
     }
     $('ai-msg').textContent = `${force ? '重新分类' : '本批处理'}完成，共 ${processed} 本${failed ? `，失败 ${failed} 本` : ''}`;
   } finally {
@@ -246,7 +282,7 @@ loadMe().then((data) => {
   }
   load();
   loadAiUsage();
-  loadNvidiaConfig();
+  loadProviderConfig();
 });
 
 $('ai-classify').addEventListener('click', classifyBatch);
@@ -255,7 +291,6 @@ $('ai-reclassify-all').addEventListener('click', () => {
     classifyBatch({ force: true });
   }
 });
-$('nvidia-model-select').addEventListener('change', () => {
-  $('nvidia-model-custom').hidden = $('nvidia-model-select').value !== 'custom';
-});
-$('nvidia-form').addEventListener('submit', saveNvidiaConfig);
+$('provider-discover').addEventListener('click', discoverProviderModels);
+$('provider-form').addEventListener('submit', saveProviderConfig);
+$('provider-delete').addEventListener('click', deleteProviderConfig);

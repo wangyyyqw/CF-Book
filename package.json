@@ -4,6 +4,9 @@
     "test": "node --test tests/"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.78",
+    "@ai-sdk/openai-compatible": "^3.0.67",
+    "ai": "^7.0.136",
     "fflate": "^0.8.3"
   }
 }
