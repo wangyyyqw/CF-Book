@@ -136,6 +136,7 @@ async function runNvidia(env, config, prompt) {
           max_tokens: 300,
           temperature: 0.1,
           top_p: 0.2,
+          response_format: { type: 'json_object' },
         }),
         signal: AbortSignal.timeout(45000),
       });

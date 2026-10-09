@@ -109,9 +109,11 @@ test('NVIDIA 模型按轮换游标选密钥，并在失败后切换下一把', a
   await env.DB.prepare('INSERT INTO nvidia_ai_config (id, model, encrypted_keys, next_key, updated_at) VALUES (1, ?, ?, 0, 0)')
     .bind('test/model', encrypted).run();
   const calls = [];
+  let requestBody;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (_url, options) => {
     if (!options?.headers?.Authorization) return new Response('{}', { status: 200 });
+    requestBody = JSON.parse(options.body);
     const key = options.headers.Authorization;
     calls.push(key);
     if (key.endsWith('first-secret')) return new Response(JSON.stringify({ error: { message: 'bad key' } }), { status: 401 });
@@ -121,6 +123,7 @@ test('NVIDIA 模型按轮换游标选密钥，并在失败后切换下一把', a
     const result = await classifyBook(env, 'b1');
     assert.equal(result.tags[0], '科幻');
     assert.deepEqual(calls, ['Bearer nvapi-first-secret', 'Bearer nvapi-second-secret']);
+    assert.deepEqual(requestBody.response_format, { type: 'json_object' });
     assert.equal((await env.DB.prepare('SELECT next_key FROM nvidia_ai_config WHERE id=1').first()).next_key, 1);
     const usage = await env.DB.prepare('SELECT model, neurons FROM ai_usage').first();
     assert.equal(usage.model, 'nvidia:test/model');
