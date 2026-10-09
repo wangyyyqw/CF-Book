@@ -1,12 +1,14 @@
 import { dbGet, dbRun, nowSec } from './db.js';
 import { replaceTags } from './tags.js';
 
-export const DEFAULT_AI_MODEL = '@cf/qwen/qwen3-30b-a3b-fp8';
+export const DEFAULT_AI_MODEL = '@cf/meta/llama-3.2-3b-instruct';
 export const DEFAULT_DAILY_LIMIT = 10000;
+export const MAX_AI_ATTEMPTS = 2;
 
 const MODEL_RATES = {
   '@cf/qwen/qwen3-30b-a3b-fp8': { input: 4625, output: 30475 },
   '@cf/meta/llama-3.2-1b-instruct': { input: 2457, output: 18252 },
+  '@cf/meta/llama-3.2-3b-instruct': { input: 4625, output: 30475 },
 };
 
 // 统一候选词，避免 AI 为同一类书生成多个近义标签。
@@ -33,14 +35,20 @@ export async function classifyBook(env, bookId, { force = false } = {}) {
 
   const current = await dbGet(env, 'SELECT * FROM ai_classifications WHERE book_id = ?', bookId);
   if (!force && current?.status === 'completed') return { skipped: true, bookId };
+  if (!force && Number(current?.attempts || 0) >= MAX_AI_ATTEMPTS) {
+    throw new Error('AI 分类重试次数已达上限');
+  }
+  const attempts = Number(current?.attempts || 0) + 1;
   const startedAt = nowSec();
   await dbRun(
     env,
-    `INSERT INTO ai_classifications (book_id, status, updated_at)
-     VALUES (?, 'processing', ?)
-     ON CONFLICT(book_id) DO UPDATE SET status='processing', error='', updated_at=?`,
+    `INSERT INTO ai_classifications (book_id, status, attempts, updated_at)
+     VALUES (?, 'processing', ?, ?)
+     ON CONFLICT(book_id) DO UPDATE SET status='processing', attempts=?, error='', updated_at=?`,
     bookId,
+    attempts,
     startedAt,
+    attempts,
     startedAt
   );
 
@@ -57,10 +65,11 @@ export async function classifyBook(env, bookId, { force = false } = {}) {
       max_tokens: 300,
       temperature: 0.1,
       top_p: 0.2,
+      top_k: 20,
       response_format: { type: 'json_object' },
     });
     usage = normalizeUsage(response?.usage);
-    const result = normalizeResult(responseText(response), book.title, book.author);
+    const result = normalizeResult(responseText(response), book.title, book.author, source);
     await replaceTags(env, bookId, result.tags);
     await dbRun(
       env,
@@ -164,39 +173,87 @@ JSON 结构：{"title":"实际书名","tags":["实际标签1","实际标签2","�
 
 function normalizeUsage(value) {
   return {
-    prompt_tokens: Math.max(0, Number(value?.prompt_tokens) || 0),
-    completion_tokens: Math.max(0, Number(value?.completion_tokens) || 0),
+    prompt_tokens: Math.max(0, Number(value?.prompt_tokens ?? value?.input_tokens ?? value?.promptTokens) || 0),
+    completion_tokens: Math.max(0, Number(value?.completion_tokens ?? value?.output_tokens ?? value?.completionTokens) || 0),
   };
 }
 
-function normalizeResult(text, fallbackTitle = '', author = '') {
-  const cleaned = String(text || '')
-    .replace(/<think>[\s\S]*?<\/think>/gi, '')
-    .replace(/^```(?:json)?\s*|\s*```$/gi, '')
-    .trim();
-  let data;
-  try {
-    data = JSON.parse(cleaned);
-  } catch {
-    const start = cleaned.indexOf('{');
-    const end = cleaned.lastIndexOf('}');
-    if (start < 0 || end <= start) throw new Error('AI 返回的 JSON 无法解析');
-    try {
-      data = JSON.parse(cleaned.slice(start, end + 1));
-    } catch {
-      throw new Error('AI 返回的 JSON 无法解析');
-    }
-  }
+export function normalizeResult(text, fallbackTitle = '', author = '', source = null) {
+  const data = parseJsonObject(text);
   const candidateTitle = String(data.title || '').trim();
   const title = isPlausibleTitle(candidateTitle, fallbackTitle, author)
-    ? candidateTitle
+    ? cleanTitleFallback(candidateTitle)
     : cleanTitleFallback(fallbackTitle);
-  const tags = [...new Set(Array.isArray(data.tags) ? data.tags.map((tag) => String(tag).trim()).filter((tag) => BOOK_TAGS.includes(tag)) : [])];
+  const inferredTags = inferTags(fallbackTitle, source);
+  const aiTags = Array.isArray(data.tags)
+    ? data.tags.map((tag) => String(tag).trim()).filter((tag) => BOOK_TAGS.includes(tag))
+    : [];
+  const tags = [...new Set([...inferredTags, ...aiTags])];
   for (const fallback of ['其他', '小说', '文学']) {
     if (tags.length >= 3) break;
     if (!tags.includes(fallback)) tags.push(fallback);
   }
   return { title, tags: tags.slice(0, 3) };
+}
+
+function parseJsonObject(value) {
+  if (value && typeof value === 'object') return value;
+  const text = String(value || '').trim();
+  const candidates = [text];
+  for (let start = 0; start < text.length; start += 1) {
+    if (text[start] !== '{') continue;
+    let depth = 0;
+    let quoted = false;
+    let escaped = false;
+    for (let end = start; end < text.length; end += 1) {
+      const char = text[end];
+      if (quoted) {
+        if (escaped) escaped = false;
+        else if (char === '\\') escaped = true;
+        else if (char === '"') quoted = false;
+        continue;
+      }
+      if (char === '"') quoted = true;
+      else if (char === '{') depth += 1;
+      else if (char === '}' && --depth === 0) {
+        candidates.push(text.slice(start, end + 1));
+        break;
+      }
+    }
+  }
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate.replace(/<think>[\s\S]*?<\/think>/gi, '').trim());
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    } catch {
+      // 继续尝试下一个完整 JSON 对象，兼容思考文本和 Markdown 包裹。
+    }
+  }
+  throw new Error('AI 返回的 JSON 无法解析');
+}
+
+function inferTags(title, source) {
+  const values = [title, ...(source?.subjects || [])].join(' ').toLowerCase();
+  const rules = [
+    [['科幻', 'science fiction', 'sci-fi'], '科幻'],
+    [['奇幻', 'fantasy', '魔法', 'wizard', '哈利·波特', '诡秘'], '奇幻'],
+    [['悬疑', 'thriller', 'mystery'], '悬疑'],
+    [['推理', 'detective', 'crime'], '推理'],
+    [['历史', 'history', 'historical'], '历史'],
+    [['传记', 'biography', 'memoir', '回忆录'], '传记'],
+    [['哲学', 'philosophy'], '哲学'],
+    [['心理', 'psychology'], '心理学'],
+    [['经济', 'economics', 'finance'], '经济'],
+    [['管理', 'management', 'business'], '管理'],
+    [['计算机', 'computer', 'programming', 'software'], '计算机'],
+    [['医学', 'medicine', 'medical'], '医学'],
+    [['教育', 'education', 'textbook'], '教育'],
+    [['漫画', 'comics', 'manga'], '漫画'],
+    [['诗', 'poetry', 'poem'], '诗歌'],
+    [['散文', 'essays', 'essay'], '散文'],
+    [['文学', 'literature', '名著', 'classic'], '文学'],
+  ];
+  return rules.filter(([keywords]) => keywords.some((keyword) => values.includes(keyword))).map(([, tag]) => tag);
 }
 
 function isPlausibleTitle(candidate, original, author = '') {
@@ -220,6 +277,8 @@ function cleanTitleFallback(title) {
 function responseText(response) {
   if (typeof response === 'string') return response;
   if (typeof response?.response === 'string') return response.response;
+  if (response?.response && typeof response.response === 'object') return response.response;
+  if (typeof response?.result?.response === 'string') return response.result.response;
   const choice = response?.choices?.[0];
   return choice?.message?.content || choice?.text || '';
 }

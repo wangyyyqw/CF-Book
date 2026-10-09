@@ -87,6 +87,7 @@ CREATE INDEX IF NOT EXISTS idx_book_tags_tag ON book_tags(tag_id);
 CREATE TABLE IF NOT EXISTS ai_classifications (
   book_id       TEXT PRIMARY KEY,
   status        TEXT NOT NULL DEFAULT 'pending',
+  attempts      INTEGER NOT NULL DEFAULT 0,
   cleaned_title TEXT NOT NULL DEFAULT '',
   tags_json     TEXT NOT NULL DEFAULT '[]',
   source        TEXT NOT NULL DEFAULT '',

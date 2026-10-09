@@ -1,7 +1,7 @@
 import { json, err } from '../../utils/http.js';
 import { dbAll, dbGet, dbRun, nowSec } from '../../utils/db.js';
 import { requireAdmin } from '../../utils/auth.js';
-import { classifyBook, dailyLimit } from '../../utils/ai-classification.js';
+import { classifyBook, dailyLimit, MAX_AI_ATTEMPTS } from '../../utils/ai-classification.js';
 
 async function usedToday(env, start) {
   const row = await dbGet(env, 'SELECT COALESCE(SUM(neurons), 0) AS neurons FROM ai_usage WHERE created_at >= ?', start);
@@ -21,7 +21,7 @@ export async function onRequestGet(context) {
      FROM ai_usage WHERE created_at >= ?`,
     start
   );
-  const pending = await dbGet(env, `SELECT COUNT(*) AS count FROM books b LEFT JOIN ai_classifications a ON a.book_id=b.id WHERE a.book_id IS NULL OR a.status IN ('pending','failed')`);
+  const pending = await dbGet(env, `SELECT COUNT(*) AS count FROM books b LEFT JOIN ai_classifications a ON a.book_id=b.id WHERE a.book_id IS NULL OR a.status = 'pending' OR (a.status = 'failed' AND a.attempts < ?)`, MAX_AI_ATTEMPTS);
   const total = await dbGet(env, 'SELECT COUNT(*) AS count FROM books');
   return json({
     ok: true,
@@ -49,9 +49,10 @@ export async function onRequestPost(context) {
   const books = await dbAll(
     env,
     `SELECT b.id FROM books b LEFT JOIN ai_classifications a ON a.book_id=b.id
-     WHERE ?=1 OR a.book_id IS NULL OR a.status IN ('pending','failed')
+     WHERE ?=1 OR a.book_id IS NULL OR a.status = 'pending' OR (a.status = 'failed' AND a.attempts < ?)
      ORDER BY b.created_at ASC LIMIT ?`,
     force ? 1 : 0,
+    MAX_AI_ATTEMPTS,
     limit
   );
   const results = [];

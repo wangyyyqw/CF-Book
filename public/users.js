@@ -18,6 +18,7 @@ async function loadAiUsage() {
   $('ai-usage').innerHTML = `
     <span><strong>${data.usedNeurons.toFixed(2)}</strong> / ${data.dailyLimit.toLocaleString()} 估算 Neurons</span>
     <span>今日请求 ${data.requests} 次 · 完成 ${data.completed} · 失败 ${data.failed}</span>
+    <span>剩余 ${(data.dailyLimit - data.usedNeurons).toFixed(2)} · 已用 ${percent.toFixed(1)}%</span>
     <span>待整理 ${data.pending} / 共 ${data.totalBooks} 本</span>`;
   $('ai-meter-fill').style.width = `${percent}%`;
   $('ai-meter-fill').title = `${percent.toFixed(1)}%`;

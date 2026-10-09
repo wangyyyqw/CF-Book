@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyBook, estimateNeurons } from '../functions/utils/ai-classification.js';
+import { classifyBook, estimateNeurons, normalizeResult } from '../functions/utils/ai-classification.js';
 import { createD1 } from './helpers/d1.mjs';
 
 function envWithBook() {
@@ -61,4 +61,10 @@ test('AI 返回占位书名时保留原书名并执行安全清理', async () =>
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('分类兼容思考文本包裹的 JSON 和公开书目标签', () => {
+  const result = normalizeResult('<think>先分析书目</think>\n```json\n{"title":"银河英雄传说（上下册）","tags":["科幻"]}\n```', '银河英雄传说（套装）', '田中芳树', { subjects: ['science fiction'] });
+  assert.equal(result.title, '银河英雄传说');
+  assert.deepEqual(result.tags, ['科幻', '其他', '小说']);
 });
