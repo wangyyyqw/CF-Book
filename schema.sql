@@ -71,7 +71,8 @@ CREATE INDEX IF NOT EXISTS idx_bus_user ON book_user_state(user_id);
 
 CREATE TABLE IF NOT EXISTS tags (
   id   INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL UNIQUE
+  name TEXT NOT NULL UNIQUE,
+  category TEXT NOT NULL DEFAULT 'other'
 );
 
 CREATE TABLE IF NOT EXISTS book_tags (

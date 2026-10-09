@@ -1,5 +1,6 @@
 import { json } from '../utils/http.js';
 import { dbAll, dbGet } from '../utils/db.js';
+import { TAG_CATEGORY_LABELS, tagCategory } from '../utils/tag-catalog.js';
 
 export async function onRequestGet(context) {
   const { request, env } = context;
@@ -62,5 +63,12 @@ export async function onRequestGet(context) {
     offset
   );
 
+  for (const book of books) {
+    book.tag_categories = (book.tags || '').split(',').filter(Boolean).reduce((groups, name) => {
+      const category = tagCategory(name);
+      (groups[TAG_CATEGORY_LABELS[category]] ||= []).push(name);
+      return groups;
+    }, {});
+  }
   return json({ ok: true, books, total, limit, offset, hasMore: offset + books.length < total });
 }

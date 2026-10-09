@@ -58,6 +58,10 @@ async function load() {
   $('f-status').value = b.my_status || 'unread';
   $('f-favorite').checked = Boolean(b.my_favorite);
   $('f-tags').value = (b.tags || []).join(', ');
+  const tagGroups = Object.entries(b.tag_categories || {})
+    .map(([category, tags]) => `<div class="tag-group"><strong>${escapeHtml(category)}</strong><span>${tags.map(escapeHtml).join('、')}</span></div>`)
+    .join('');
+  $('tag-groups').innerHTML = tagGroups;
   renderRatings(b);
   renderCover(b.cover || '');
   $('download').dataset.uploadId = b.upload_id || '';

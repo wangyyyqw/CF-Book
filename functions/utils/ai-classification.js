@@ -1,5 +1,6 @@
 import { dbGet, dbRun, nowSec } from './db.js';
 import { replaceTags } from './tags.js';
+import { BOOK_TAGS, EXTERNAL_TAG_ALIASES, GENERIC_TAGS, tagCategory } from './tag-catalog.js';
 
 export const DEFAULT_AI_MODEL = '@cf/meta/llama-3.2-3b-instruct';
 export const DEFAULT_DAILY_LIMIT = 10000;
@@ -11,12 +12,7 @@ const MODEL_RATES = {
   '@cf/meta/llama-3.2-3b-instruct': { input: 4625, output: 30475 },
 };
 
-// 统一候选词，避免 AI 为同一类书生成多个近义标签。
-export const BOOK_TAGS = [
-  '文学', '小说', '科幻', '奇幻', '悬疑', '推理', '历史', '传记', '哲学', '心理学',
-  '经济', '管理', '计算机', '医学', '教育', '艺术', '诗歌', '散文', '漫画', '儿童',
-  '教材', '工具书', '语言学习', '武侠', '其他',
-];
+export { BOOK_TAGS } from './tag-catalog.js';
 
 export function dailyLimit(env) {
   const value = Number(env.AI_DAILY_LIMIT);
@@ -166,7 +162,7 @@ JSON 结构：{"title":"实际书名","tags":["实际标签1","实际标签2","�
 规则：
 1. 删除书名中的套装、上下册、全套、插图、珍藏版、精装版、电子版、扫描版、网盘版等版本或营销描述；不要删除真正的系列名或副标题。
 2. tags 必须恰好 3 个，且只能从候选词中选择：${BOOK_TAGS.join('、')}。
-3. 优先依据书名、作者、出版社和公开书目资料；无法确定时使用“其他”，不要编造具体事实。
+3. 优先依据书名、作者、出版社和公开书目资料；优先选择具体题材或学科标签，只有无法判断时才使用“文学”“小说”“其他”，不要编造具体事实。
 4. title 只保留书名，不要包含作者名、文件扩展名或解释。
 书目数据：${JSON.stringify(payload)}`;
 }
@@ -189,11 +185,17 @@ export function normalizeResult(text, fallbackTitle = '', author = '', source = 
     ? data.tags.map((tag) => String(tag).trim()).filter((tag) => BOOK_TAGS.includes(tag))
     : [];
   const tags = [...new Set([...inferredTags, ...aiTags])];
-  for (const fallback of ['其他', '小说', '文学']) {
-    if (tags.length >= 3) break;
-    if (!tags.includes(fallback)) tags.push(fallback);
+  const specific = tags.filter((tag) => !GENERIC_TAGS.has(tag));
+  const generic = tags.filter((tag) => GENERIC_TAGS.has(tag));
+  const ordered = [];
+  for (const tag of [...specific, ...generic]) {
+    if (!ordered.some((item) => tagCategory(item) === tagCategory(tag))) ordered.push(tag);
   }
-  return { title, tags: tags.slice(0, 3) };
+  for (const fallback of ['其他', '小说', '文学']) {
+    if (ordered.length >= 3) break;
+    if (!ordered.includes(fallback)) ordered.push(fallback);
+  }
+  return { title, tags: ordered.slice(0, 3) };
 }
 
 function parseJsonObject(value) {
@@ -234,27 +236,14 @@ function parseJsonObject(value) {
 
 function inferTags(title, source, author = '') {
   const values = [title, author, ...(source?.subjects || [])].join(' ').toLowerCase();
-  const rules = [
-    [['金庸', '古龙', '梁羽生', '武侠', 'wuxia', 'martial arts'], '武侠'],
-    [['科幻', 'science fiction', 'sci-fi'], '科幻'],
-    [['奇幻', 'fantasy', '魔法', 'wizard', '哈利·波特', '诡秘'], '奇幻'],
-    [['悬疑', 'thriller', 'mystery'], '悬疑'],
-    [['推理', 'detective', 'crime'], '推理'],
-    [['历史', 'history', 'historical'], '历史'],
-    [['传记', 'biography', 'memoir', '回忆录'], '传记'],
-    [['哲学', 'philosophy'], '哲学'],
-    [['心理', 'psychology'], '心理学'],
-    [['经济', 'economics', 'finance'], '经济'],
-    [['管理', 'management', 'business'], '管理'],
-    [['计算机', 'computer', 'programming', 'software'], '计算机'],
-    [['医学', 'medicine', 'medical'], '医学'],
-    [['教育', 'education', 'textbook'], '教育'],
-    [['漫画', 'comics', 'manga'], '漫画'],
-    [['诗', 'poetry', 'poem'], '诗歌'],
-    [['散文', 'essays', 'essay'], '散文'],
-    [['文学', 'literature', '名著', 'classic'], '文学'],
-  ];
-  return rules.filter(([keywords]) => keywords.some((keyword) => values.includes(keyword))).map(([, tag]) => tag);
+  const inferred = [];
+  if (['金庸', '古龙', '梁羽生', '武侠', 'wuxia', 'martial arts'].some((keyword) => values.includes(keyword))) inferred.push('武侠');
+  for (const [alias, tag] of Object.entries(EXTERNAL_TAG_ALIASES)) {
+    if (values.includes(alias.toLowerCase())) inferred.push(tag);
+  }
+  if (values.includes('魔法') || values.includes('wizard') || values.includes('哈利·波特') || values.includes('诡秘')) inferred.push('奇幻');
+  if (values.includes('science') && !values.includes('science fiction')) inferred.push('科普');
+  return [...new Set(inferred)];
 }
 
 function isPlausibleTitle(candidate, original, author = '') {

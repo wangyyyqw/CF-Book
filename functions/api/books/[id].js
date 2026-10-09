@@ -4,6 +4,7 @@ import { requireAdmin } from '../../utils/auth.js';
 import { parseTags } from '../../utils/books.js';
 import { replaceTags } from '../../utils/tags.js';
 import { tgDeleteMessage } from '../../utils/tg.js';
+import { TAG_CATEGORY_LABELS, tagCategory } from '../../utils/tag-catalog.js';
 
 export async function onRequestGet(context) {
   const { env, params } = context;
@@ -16,6 +17,11 @@ export async function onRequestGet(context) {
     params.id
   );
   book.tags = tags.map((t) => t.name);
+  book.tag_categories = tags.reduce((groups, tag) => {
+    const category = tagCategory(tag.name);
+    (groups[TAG_CATEGORY_LABELS[category]] ||= []).push(tag.name);
+    return groups;
+  }, {});
 
   // 每个账号各自的评分与状态，所有人都能看见
   const states = await dbAll(

@@ -61,11 +61,16 @@ async function loadTags() {
   const res = await api('/api/tags');
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) return;
-  for (const tag of data.tags || []) {
-    const option = document.createElement('option');
-    option.value = tag.name;
-    option.textContent = `${tag.name}（${tag.count}）`;
-    tagFilterEl.appendChild(option);
+  for (const group of data.categories || []) {
+    const optgroup = document.createElement('optgroup');
+    optgroup.label = group.label;
+    for (const tag of group.tags || []) {
+      const option = document.createElement('option');
+      option.value = tag.name;
+      option.textContent = `${tag.name}（${tag.count}）`;
+      optgroup.appendChild(option);
+    }
+    if (optgroup.children.length) tagFilterEl.appendChild(optgroup);
   }
 }
 

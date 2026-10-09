@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyBook, estimateNeurons, normalizeResult } from '../functions/utils/ai-classification.js';
+import { BOOK_TAGS, classifyBook, estimateNeurons, normalizeResult } from '../functions/utils/ai-classification.js';
 import { createD1 } from './helpers/d1.mjs';
 
 function envWithBook() {
@@ -66,7 +66,7 @@ test('AI 返回占位书名时保留原书名并执行安全清理', async () =>
 test('分类兼容思考文本包裹的 JSON 和公开书目标签', () => {
   const result = normalizeResult('<think>先分析书目</think>\n```json\n{"title":"银河英雄传说（上下册）","tags":["科幻"]}\n```', '银河英雄传说（套装）', '田中芳树', { subjects: ['science fiction'] });
   assert.equal(result.title, '银河英雄传说');
-  assert.deepEqual(result.tags, ['科幻', '其他', '小说']);
+  assert.deepEqual(result.tags, ['科幻', '小说', '其他']);
 });
 
 test('金庸作品优先加入武侠标签', () => {
@@ -76,5 +76,21 @@ test('金庸作品优先加入武侠标签', () => {
     '金庸',
     { subjects: ['fiction'] },
   );
-  assert.deepEqual(result.tags, ['武侠', '文学', '历史']);
+  assert.deepEqual(result.tags, ['武侠', '历史', '小说']);
+});
+
+test('具体标签优先于文学和其他等泛标签', () => {
+  const result = normalizeResult(
+    JSON.stringify({ title: '银河英雄传说', tags: ['文学', '小说', '科幻'] }),
+    '银河英雄传说',
+    '田中芳树',
+    { subjects: ['science fiction'] },
+  );
+  assert.deepEqual(result.tags, ['科幻', '小说', '其他']);
+});
+
+test('受控标签词库包含分层题材、学科和受众标签', () => {
+  for (const tag of ['武侠', '仙侠', '历史小说', '编程', '人类学', '青少年', '纪实文学']) {
+    assert.ok(BOOK_TAGS.includes(tag), `${tag} 应在受控标签词库中`);
+  }
 });

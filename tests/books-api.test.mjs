@@ -111,6 +111,7 @@ test('按标签筛选，总数同样跟随筛选', async () => {
   assert.deepEqual(data.books.map((b) => b.id), ['b1']);
   assert.equal(data.total, 1);
   assert.deepEqual(data.books[0].tags, '历史');
+  assert.deepEqual(data.books[0].tag_categories, { 学科: ['历史'] });
 });
 
 test('推荐接口最多返回九本，并按评分优先', async () => {
