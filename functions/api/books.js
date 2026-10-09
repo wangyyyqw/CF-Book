@@ -1,0 +1,60 @@
+import { json } from '../utils/http.js';
+import { dbAll, dbGet } from '../utils/db.js';
+
+export async function onRequestGet(context) {
+  const { request, env } = context;
+  const user = context.data.user;
+  const url = new URL(request.url);
+  const q = (url.searchParams.get('q') || '').trim();
+  const tag = (url.searchParams.get('tag') || '').trim();
+  const status = (url.searchParams.get('status') || '').trim();
+  const limit = Math.min(Number(url.searchParams.get('limit')) || 100, 500);
+  const offset = Math.max(Number(url.searchParams.get('offset')) || 0, 0);
+
+  // my_* 是当前账号自己的评分/状态，rating_avg 是所有人打分的平均值
+  const from = `
+    FROM books b
+    LEFT JOIN book_user_state mine ON mine.book_id = b.id AND mine.user_id = ?
+  `;
+  const where = [];
+  const filters = [];
+  if (q) {
+    where.push('(b.title LIKE ? OR b.author LIKE ? OR b.description LIKE ?)');
+    const like = `%${q}%`;
+    filters.push(like, like, like);
+  }
+  if (tag) {
+    where.push('b.id IN (SELECT book_id FROM book_tags bt JOIN tags t ON t.id = bt.tag_id WHERE t.name = ?)');
+    filters.push(tag);
+  }
+  if (status) {
+    where.push(status === 'favorite'
+      ? 'COALESCE(mine.is_favorite, 0) = 1'
+      : "COALESCE(mine.status, 'unread') = ?");
+    if (status !== 'favorite') filters.push(status);
+  }
+  const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+
+  // 总数与列表用同一套筛选条件，避免「共 N 本」与实际可翻页数量不一致
+  const total = (await dbGet(env, `SELECT COUNT(*) AS n ${from}${whereSql}`, user.id, ...filters)).n;
+
+  const books = await dbAll(
+    env,
+    `SELECT b.*,
+      (SELECT group_concat(t.name, ',') FROM book_tags bt JOIN tags t ON t.id = bt.tag_id WHERE bt.book_id = b.id) AS tags,
+      (SELECT ROUND(AVG(s.rating), 1) FROM book_user_state s WHERE s.book_id = b.id AND s.rating > 0) AS rating_avg,
+      (SELECT COUNT(*) FROM book_user_state s WHERE s.book_id = b.id AND s.rating > 0) AS rating_count,
+      COALESCE(mine.rating, 0) AS my_rating,
+      COALESCE(mine.status, 'unread') AS my_status,
+      COALESCE(mine.is_favorite, 0) AS my_favorite
+     ${from}${whereSql}
+     ORDER BY b.created_at DESC, b.id DESC
+     LIMIT ? OFFSET ?`,
+    user.id,
+    ...filters,
+    limit,
+    offset
+  );
+
+  return json({ ok: true, books, total, limit, offset, hasMore: offset + books.length < total });
+}

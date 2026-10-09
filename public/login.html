@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CF-Book · 登录</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body class="auth-page">
+    <main class="auth-shell">
+      <section class="panel auth-card">
+        <p class="auth-brand">CF-Book</p>
+        <h1 class="auth-title" id="auth-title">登录书库</h1>
+        <p class="auth-sub" id="auth-sub">请输入账号继续</p>
+        <form id="auth-form">
+          <label>用户名<input id="username" autocomplete="username" required /></label>
+          <label id="display-name-field" hidden>显示名称<input id="display-name" placeholder="例如：小王" /></label>
+          <label>密码<input id="password" type="password" autocomplete="current-password" required /></label>
+          <label id="service-token-field" hidden>初始化服务令牌<input id="service-token" type="password" autocomplete="off" /></label>
+          <button id="auth-submit" type="submit">登录</button>
+          <p id="auth-msg" class="auth-msg"></p>
+        </form>
+      </section>
+    </main>
+
+    <script type="module" src="/login.js"></script>
+  </body>
+</html>

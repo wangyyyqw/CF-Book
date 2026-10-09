@@ -1,0 +1,325 @@
+import { strFromU8, inflateSync } from './vendor/fflate.js';
+
+// —— zip 按需读取（不整读文件，兼容浏览器 File 与 Node Buffer/Uint8Array） ——
+
+// 读取文件 [start, end) 字节
+async function readRange(file, start, end) {
+  if (typeof file.slice === 'function' && typeof file.arrayBuffer === 'function') {
+    // 浏览器 File
+    return new Uint8Array(await file.slice(start, end).arrayBuffer());
+  }
+  // Uint8Array / Buffer
+  const u8 = file instanceof Uint8Array ? file : new Uint8Array(file);
+  return u8.subarray(start, Math.min(end, u8.length)).slice();
+}
+
+async function readAll(file) {
+  if (typeof file.arrayBuffer === 'function') return new Uint8Array(await file.arrayBuffer());
+  return file instanceof Uint8Array ? file.slice() : new Uint8Array(file);
+}
+
+// 从 EOCD 尾部找到 central directory 偏移
+async function findEocd(file, size) {
+  const tailLen = Math.min(size, 72 * 1024);
+  const tail = await readRange(file, size - tailLen, size);
+  const dv = new DataView(tail.buffer, tail.byteOffset, tail.byteLength);
+  // 从后往前找 EOCD 签名 0x06054b50（最后 22 字节开始）
+  const eocd = (() => {
+    for (let i = tail.length - 22; i >= 0 && i >= tail.length - 65557; i--) {
+      if (dv.getUint32(i, true) === 0x06054b50) return i;
+    }
+    return -1;
+  })();
+  if (eocd < 0) return null;
+  const eocdAbs = size - tailLen + eocd; // 绝对偏移
+  const totalEntries = dv.getUint16(eocd + 10, true);
+  const cdSize = dv.getUint32(eocd + 12, true);
+  const cdOffset = dv.getUint32(eocd + 16, true);
+  return { eocdAbs, totalEntries, cdSize, cdOffset };
+}
+
+// 从文件读取并解析 central directory（按 EOCD 提供的偏移精读，避免大文件超界）
+async function readCentralDir(file, size) {
+  const eocdInfo = await findEocd(file, size);
+  if (!eocdInfo) return null;
+  const { totalEntries, cdSize, cdOffset } = eocdInfo;
+  if (cdOffset + cdSize > size || cdSize > 16 * 1024 * 1024) return null;
+  const cd = await readRange(file, cdOffset, cdOffset + cdSize);
+  const dv = new DataView(cd.buffer, cd.byteOffset, cd.byteLength);
+  const entries = [];
+  let p = 0;
+  for (let i = 0; i < totalEntries; i++) {
+    if (p + 46 > cd.length) break;
+    if (dv.getUint32(p, true) !== 0x02014b50) break;
+    const method = dv.getUint16(p + 10, true);
+    const compSize = dv.getUint32(p + 20, true);
+    const uncompSize = dv.getUint32(p + 24, true);
+    const nameLen = dv.getUint16(p + 28, true);
+    const extraLen = dv.getUint16(p + 30, true);
+    const commentLen = dv.getUint16(p + 32, true);
+    const localOffset = dv.getUint32(p + 42, true);
+    const name = new TextDecoder().decode(cd.subarray(p + 46, p + 46 + nameLen));
+    entries.push({ name, method, compSize, uncompSize, localOffset });
+    p += 46 + nameLen + extraLen + commentLen;
+  }
+  return entries;
+}
+
+// 按 offset 读取并解压单个 zip 条目
+async function readEntry(file, entry) {
+  // local file header
+  const header = await readRange(file, entry.localOffset, entry.localOffset + 30);
+  if (header.length < 30) throw new Error('bad local header');
+  const dv = new DataView(header.buffer, header.byteOffset, header.byteLength);
+  if (dv.getUint32(0, true) !== 0x04034b50) throw new Error('bad local header');
+  const method = dv.getUint16(8, true);
+  const compSize = dv.getUint32(18, true);
+  const nameLen = dv.getUint16(26, true);
+  const extraLen = dv.getUint16(28, true);
+  const dataStart = entry.localOffset + 30 + nameLen + extraLen;
+  const comp = await readRange(file, dataStart, dataStart + compSize);
+  if (method === 0) return comp.slice();
+  return inflateSync(comp);
+}
+
+// 给定任意文件源，返回 EPUB 的 container.xml + OPF 元数据
+export async function epubMeta(file) {
+  try {
+    // 1. 按 EOCD 记录的偏移精读 central directory
+    const size = typeof file.size === 'number' ? file.size : file.length || file.byteLength;
+    const entries = await readCentralDir(file, size);
+    if (!entries) return null;
+
+    const containerEntry = entries.find((e) => e.name === 'META-INF/container.xml');
+    if (!containerEntry) return null;
+    const containerXml = strFromU8(await readEntry(file, containerEntry));
+    const opfMatch = containerXml.match(/full-path\s*=\s*"([^"]+)"/i);
+    if (!opfMatch) return null;
+    const opfPath = opfMatch[1].replace(/\\/g, '/').replace(/^\//, '');
+
+    const opfEntry = entries.find((e) => e.name === opfPath || e.name === opfPath.toLowerCase());
+    if (!opfEntry) return null;
+    const opf = strFromU8(await readEntry(file, opfEntry));
+
+    const field = (name) => {
+      const re = new RegExp(`<dc:${name}[^>]*>([\\s\\S]*?)<\\/dc:${name}>`, 'i');
+      const m = opf.match(re);
+      if (!m) return '';
+      return m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/<[^>]+>/g, '').trim();
+    };
+    const authors = [...opf.matchAll(/<dc:creator[^>]*>([\s\S]*?)<\/dc:creator>/gi)]
+      .map((m) => m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/<[^>]+>/g, '').trim())
+      .filter(Boolean);
+    const identifier = field('identifier');
+
+    return {
+      title: field('title'),
+      author: authors[0] || '',
+      language: field('language'),
+      publisher: field('publisher'),
+      date: field('date').slice(0, 10),
+      isbn: identifier.replace(/^.*?[:\s]*([0-9Xx-]{10,17}).*$/, '$1'),
+      description: field('description'),
+      // 返回 OPF 里的封面 item 信息，供 extractCover 复用
+      _opf: opf,
+      _entries: entries,
+      _file: file,
+      _opfDir: opfPath.includes('/') ? opfPath.slice(0, opfPath.lastIndexOf('/') + 1) : '',
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+// 从 EPUB 提取内嵌封面图（复用 epubMeta 拿到的 OPF 与条目表）
+export async function extractCoverFromMeta(meta) {
+  if (!meta?._opf) return null;
+  try {
+    const opf = meta._opf;
+    const entries = meta._entries;
+    const file = meta._file;
+    const coverId =
+      (opf.match(/<meta\s+name\s*=\s*"(?:cover|cover-image)"[^>]*content\s*=\s*"([^"]+)"/i) || [])[1] ||
+      (opf.match(/<meta\s+content\s*=\s*"([^"]+)"[^>]*name\s*=\s*"(?:cover|cover-image)"/i) || [])[1];
+
+    let coverName = '';
+    if (coverId) {
+      const itemRe = new RegExp(`<item[^>]*id\\s*=\\s*["']${escapeRe(coverId)}["'][^>]*href\\s*=\\s*["']([^"']+)["']`, 'i');
+      const item = opf.match(itemRe) || opf.match(new RegExp(`<item[^>]*href\\s*=\\s*["']([^"']+)["'][^>]*id\\s*=\\s*["']${escapeRe(coverId)}["']`, 'i'));
+      coverName = item ? item[1] : '';
+    }
+
+    // EPUB3 标准：<item properties="cover-image" href="..."/>
+    if (!coverName) {
+      const propRe = /<item\b[^>]*properties\s*=\s*"[^"]*cover-image[^"]*"[^>]*href\s*=\s*"([^"]+)"/i;
+      const m = opf.match(propRe) || opf.match(/<item\b[^>]*href\s*=\s*"([^"]+)"[^>]*properties\s*=\s*"[^"]*cover-image[^"]*"/i);
+      if (m) coverName = m[1];
+    }
+
+    // 回退常见封面文件名
+    if (!coverName) {
+      // 按 basename 匹配 cover/front 等常见封面名，忽略目录
+      const commonBase = ['cover.jpg', 'cover.jpeg', 'cover.png', 'cover.webp', 'front.jpg', 'front.png', 'cover_image.jpg', 'cover_image.png'];
+      const found = entries.find((e) => commonBase.includes(e.name.split('/').pop().toLowerCase()));
+      if (found) coverName = found.name;
+    }
+
+    if (!coverName) return null;
+    const normalized = coverName.replace(/^\.\//, '');
+    // 封面 href 相对 OPF 所在目录；也兼容已带目录的写法
+    const candidates = [normalized, meta._opfDir + normalized, meta._opfDir.replace(/\/$/, '') + '/' + normalized];
+    const entry = entries.find((e) => candidates.includes(e.name) || candidates.includes(e.name.replace(/\\/g, '/')));
+    if (!entry) return null;
+
+    const bytes = await readEntry(file, entry);
+    const mime = coverName.match(/\.(png|webp|jpe?g)$/i)
+      ? { png: 'image/png', webp: 'image/webp', jpg: 'image/jpeg', jpeg: 'image/jpeg' }[coverName.match(/\.(png|webp|jpe?g)$/i)[1].toLowerCase()]
+      : 'image/jpeg';
+    return { bytes, mime };
+  } catch (e) {
+    return null;
+  }
+}
+
+function escapeRe(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// 从文件名解析书名/作者，支持常见格式
+export function parseFilename(name) {
+  let base = String(name || '').replace(/\.[^.]+$/, '');
+  base = base.replace(/\s*\(z-library[^)]*\)$/i, '');
+  base = base.replace(/\s*\[z-lib\.org\]$/i, '');
+  base = base.trim();
+  const m = { title: base, author: '' };
+
+  // 书名（作者）[修饰词...]
+  let r = base.match(/^(.+?)[（(]\s*([^（）()]{2,30})\s*[）)](\s*.*)$/);
+  if (r && !r[1].includes('（') && !r[1].includes('(')) {
+    m.title = (r[1] + (r[3] ? r[3].trim() : '')).trim();
+    m.author = r[2].trim();
+    return clean(m);
+  }
+
+  // [作者] 书名
+  r = base.match(/^\[(.+?)\]\s*(.+)$/);
+  if (r) {
+    m.title = r[2].trim();
+    m.author = r[1].trim();
+    return clean(m);
+  }
+
+  // 作者 - 书名 / 作者_书名 / 作者——书名
+  r = base.match(/^([^\-–—_]+)[\s\-–—_]+(.+)$/);
+  if (r) {
+    m.author = r[1].trim();
+    m.title = r[2].trim();
+    return clean(m);
+  }
+
+  if (m.title) {
+    m.title = m.title.replace(/_/g, ' ').trim();
+  }
+  if (m.author) {
+    m.author = m.author.replace(/[_\-]/g, ' ').trim();
+  }
+  return m;
+}
+
+function clean(m) {
+  m.title = m.title.replace(/_/g, ' ').trim();
+  m.author = m.author.replace(/[_\-]/g, ' ').trim();
+  return m;
+}
+
+// 从 PDF 头部提取 Title/Author 元数据（xmp / info dict）
+export function pdfMeta(bytes) {
+  try {
+    const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    const max = Math.min(u8.length, 2 * 1024 * 1024);
+    const text = new TextDecoder('utf-8', { fatal: false }).decode(u8.subarray(0, max));
+    const out = { title: '', author: '' };
+    const findInfo = (key) => {
+      const re = new RegExp(`/\\s*${key}\\s*\\(([^)]*)\\)`, 'i');
+      const m = text.match(re);
+      return m ? m[1] : '';
+    };
+    out.title = findInfo('Title');
+    out.author = findInfo('Author');
+    return out.title || out.author ? out : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// MOBI/AZW3: 读取 EXTH 头里的作者(title 从 PDB 名字来)
+export function mobiMeta(bytes) {
+  try {
+    const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    if (u8.length < 100) return null;
+    // PDB header: 名称在 offset 0x54 (84)，32字节
+    const pdbName = new TextDecoder('latin1').decode(u8.subarray(84, 116)).replace(/\0+$/, '').trim();
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    const exthMagic = 0x45585448; // 'EXTH'
+    let author = '';
+    let title = pdbName.replace(/\.mobi$/i, '').replace(/\.azw3?$/i, '');
+    // 找 EXTH 记录（在 PalmDOC header 后），作者 type=100
+    for (let i = 0; i < Math.min(u8.length - 12, 200 * 1024); i += 2) {
+      if (dv.getUint32(i) === exthMagic) {
+        const len = dv.getUint32(i + 4);
+        const end = Math.min(i + 8 + len, u8.length);
+        let p = i + 12;
+        while (p + 8 <= end) {
+          const type = dv.getUint32(p);
+          const size = dv.getUint32(p + 4);
+          if (type === 100 && size > 8) {
+            author = new TextDecoder('utf-8').decode(u8.subarray(p + 8, Math.min(p + size, end))).replace(/\0+$/, '').trim();
+          }
+          p += size;
+        }
+        break;
+      }
+    }
+    return { title, author };
+  } catch (e) {
+    return null;
+  }
+}
+
+// 统一入口：给定 File 对象（支持 slice 流式读取），返回元数据
+export async function extractFileMetadata(file, fileName) {
+  const ext = (String(fileName).match(/\.([A-Za-z0-9]+)$/) || [])[1]?.toLowerCase() || '';
+  let meta = null;
+  const inferred = parseFilename(fileName);
+
+  if (ext === 'epub') {
+    meta = await epubMeta(file);
+  } else if (ext === 'pdf' || ext === 'mobi' || ext === 'azw3' || ext === 'azw') {
+    // PDF/MOBI 元数据都在文件头部，读前 2MB 即可
+    const head = await readRange(file, 0, Math.min(2 * 1024 * 1024, file.size));
+    meta = ext === 'pdf' ? pdfMeta(head) : mobiMeta(head);
+  }
+
+  const title = (meta?.title && meta.title.trim()) || inferred.title || String(fileName).replace(/\.[^.]+$/, '');
+  const author = (meta?.author && meta.author.trim()) || inferred.author || '';
+  return {
+    title,
+    author,
+    format: ext,
+    publisher: meta?.publisher || '',
+    language: meta?.language || '',
+    isbn: meta?.isbn || '',
+    description: meta?.description || '',
+    date: meta?.date || '',
+    _meta: meta,
+  };
+}
+
+// 统一入口：提取 EPUB 封面（流式）
+export async function extractCoverFromFile(file, fileName) {
+  const ext = (String(fileName).match(/\.([A-Za-z0-9]+)$/) || [])[1]?.toLowerCase() || '';
+  if (ext !== 'epub') return null;
+  const meta = await epubMeta(file);
+  if (!meta) return null;
+  return extractCoverFromMeta(meta);
+}

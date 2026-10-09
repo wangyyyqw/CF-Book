@@ -1,0 +1,8 @@
+node_modules/
+.wrangler/
+.dev.vars
+.dev.vars.example
+data/
+*.local
+# 参考用的第三方克隆（各自带 .git，体积大，按需自行 clone）
+参考/

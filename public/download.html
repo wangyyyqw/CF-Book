@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CF-Book · 下载</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>CF-Book 分块传输原型</h1>
+      <nav>
+        <a href="/library">书库</a>
+        <a href="/">上传</a>
+        <a href="/download">下载</a>
+      </nav>
+      <div id="user-area" class="user-area"></div>
+    </header>
+
+    <main class="shell">
+      <section class="panel">
+        <h2>已入库任务</h2>
+        <table id="tasks" class="tasks">
+          <thead>
+            <tr><th>文件名</th><th>大小</th><th>分块</th><th>状态</th><th></th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div id="dprogress" class="progress" hidden></div>
+        <ul id="dlog" class="log"></ul>
+      </section>
+    </main>
+
+    <script type="module" src="/nav.js"></script>
+    <script type="module" src="/download.js"></script>
+  </body>
+</html>

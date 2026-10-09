@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CF-Book · 书籍详情</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>CF-Book 书库</h1>
+      <nav>
+        <a href="/library">书库</a>
+        <a href="/">上传</a>
+        <a href="/download">下载</a>
+      </nav>
+      <div id="user-area" class="user-area"></div>
+    </header>
+
+    <main class="shell">
+      <section class="panel book-form">
+        <div class="book-cover">
+          <img id="cover" alt="封面" />
+        </div>
+        <div class="book-fields">
+          <h2 id="book-title">加载中…</h2>
+          <p class="book-meta" id="book-meta"></p>
+
+          <div class="state-row">
+            <label>我的评分
+              <input id="f-rating" type="number" min="0" max="10" step="0.5" />
+            </label>
+            <label>我的状态
+              <select id="f-status">
+                <option value="unread">未读</option>
+                <option value="reading">在读</option>
+                <option value="read">已读</option>
+              </select>
+            </label>
+            <label class="favorite-toggle"><input id="f-favorite" type="checkbox" /> 我的收藏</label>
+            <button id="save-state">保存我的评分</button>
+            <span id="state-msg" class="form-msg"></span>
+          </div>
+
+          <div class="ratings-box">
+            <h3 id="ratings-title">大家的打分</h3>
+            <ul id="ratings" class="ratings"></ul>
+          </div>
+
+          <div class="actions-row">
+            <button id="download">下载原文件</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>标签（共享）</h2>
+        <form id="tags-form" class="inline-form">
+          <input id="f-tags" placeholder="用逗号分隔，如 历史, 文言文" />
+          <button type="submit">保存标签</button>
+          <span id="tags-msg" class="form-msg"></span>
+        </form>
+      </section>
+
+      <section class="panel" id="admin-panel" hidden>
+        <h2>书籍信息（仅管理员可改）</h2>
+        <div class="book-fields">
+          <label>书名<input id="f-title" /></label>
+          <label>作者<input id="f-author" /></label>
+          <label>简介<textarea id="f-description" rows="3"></textarea></label>
+          <label>出版社<input id="f-publisher" /></label>
+          <label>ISBN<input id="f-isbn" /></label>
+          <label>语言<input id="f-language" /></label>
+          <label>格式<input id="f-format" /></label>
+          <label>封面 URL<input id="f-cover" placeholder="可选，留空使用占位" /></label>
+        </div>
+        <div class="actions-row">
+          <button id="save">保存</button>
+          <label class="btn-cover">
+            上传封面
+            <input id="cover-file" type="file" accept="image/*" hidden />
+          </label>
+          <button id="delete" class="danger">删除</button>
+          <span id="msg"></span>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/nav.js"></script>
+    <script type="module" src="/book.js"></script>
+  </body>
+</html>

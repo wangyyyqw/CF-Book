@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CF-Book · 书库</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body class="library-page">
+    <header class="topbar">
+      <h1>CF-Book 书库</h1>
+      <nav>
+        <a href="/library" class="active">书库</a>
+        <a href="/">上传</a>
+        <a href="/download">下载</a>
+      </nav>
+      <div id="user-area" class="user-area"></div>
+    </header>
+
+    <main class="shell">
+      <section class="panel library-bar">
+        <input id="search" type="search" placeholder="搜索书名 / 作者 / 简介" />
+        <select id="status">
+          <option value="">全部状态</option>
+          <option value="unread">未读</option>
+          <option value="reading">在读</option>
+          <option value="read">已读</option>
+          <option value="favorite">收藏</option>
+        </select>
+        <span id="count"></span>
+      </section>
+      <div id="books" class="books"></div>
+      <div class="more-row"><button id="more" class="more-btn" hidden>加载更多</button></div>
+    </main>
+
+    <script type="module" src="/nav.js"></script>
+    <script type="module" src="/library.js"></script>
+  </body>
+</html>

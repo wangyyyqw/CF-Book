@@ -1,0 +1,9 @@
+{
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/"
+  },
+  "dependencies": {
+    "fflate": "^0.8.3"
+  }
+}
