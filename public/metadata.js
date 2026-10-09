@@ -180,15 +180,17 @@ export async function extractCoverFromMeta(meta) {
     }
 
     if (!coverName) return null;
-    const normalized = coverName.replace(/^\.\//, '');
+    const decodedCoverName = decodeZipHref(coverName);
+    const normalized = decodedCoverName.replace(/^\.\//, '');
     // 封面 href 相对 OPF 所在目录；也兼容已带目录的写法
     const candidates = [normalized, meta._opfDir + normalized, meta._opfDir.replace(/\/$/, '') + '/' + normalized];
     const entry = entries.find((e) => candidates.includes(e.name) || candidates.includes(e.name.replace(/\\/g, '/')));
     if (!entry) return null;
 
     const bytes = await readEntry(file, entry);
-    const mime = coverName.match(/\.(png|webp|jpe?g|gif)$/i)
-      ? { png: 'image/png', webp: 'image/webp', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif' }[coverName.match(/\.(png|webp|jpe?g|gif)$/i)[1].toLowerCase()]
+    const extension = normalized.match(/\.(png|webp|jpe?g|gif)$/i)?.[1]?.toLowerCase();
+    const mime = extension
+      ? { png: 'image/png', webp: 'image/webp', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif' }[extension]
       : 'image/jpeg';
     return { bytes, mime };
   } catch (e) {
@@ -210,6 +212,15 @@ async function findCoverPage(entries, file) {
 
 function decodeXmlEntities(value) {
   return value.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+}
+
+function decodeZipHref(href) {
+  const path = decodeXmlEntities(href).split(/[?#]/, 1)[0];
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
 }
 
 function resolvePath(pageName, href) {

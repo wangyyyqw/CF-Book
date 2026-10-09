@@ -29,3 +29,20 @@ test('ZIP 条目使用 data descriptor 时仍能读取封面页', async () => {
   const cover = await extractCoverFromFile(epubWithExternalCover(), 'test.epub');
   assert.equal(cover?.url, 'https://example.com/covers/test.jpg?x=1&y=2');
 });
+
+test('封面 href 的 URI 编码解码后匹配 ZIP 条目', async () => {
+  const expected = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+  const files = {
+    mimetype: new Uint8Array(strToU8('application/epub+zip')),
+    'META-INF/container.xml': strToU8(
+      '<container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>'
+    ),
+    'OEBPS/content.opf': strToU8(
+      '<package><metadata></metadata><manifest><item id="cover" href="Images/Cover%20Art%2A.jpg?download=1" media-type="image/jpeg"/></manifest><meta name="cover" content="cover"/></package>'
+    ),
+    'OEBPS/Images/Cover Art*.jpg': expected,
+  };
+  const cover = await extractCoverFromFile(new File([zipSync(files)], 'encoded-cover.epub'), 'encoded-cover.epub');
+  assert.equal(cover?.mime, 'image/jpeg');
+  assert.deepEqual(cover?.bytes, expected);
+});
