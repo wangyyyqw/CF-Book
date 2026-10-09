@@ -5,6 +5,7 @@ const searchEl = $('search');
 const statusEl = $('status');
 const countEl = $('count');
 const moreEl = $('more');
+const themeToggle = $('theme-toggle');
 
 const PAGE_SIZE = 100;
 const STATUS_LABEL = { unread: '未读', reading: '在读', read: '已读', favorite: '收藏' };
@@ -98,3 +99,9 @@ function debounce(fn, ms) {
 }
 
 load({ reset: true });
+
+themeToggle.addEventListener('click', () => {
+  const dark = document.body.classList.toggle('library-dark');
+  themeToggle.textContent = dark ? '浅色' : '暗色';
+  themeToggle.setAttribute('aria-label', dark ? '切换到浅色模式' : '切换到暗色模式');
+});

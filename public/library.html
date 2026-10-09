@@ -7,18 +7,32 @@
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body class="library-page">
-    <header class="topbar">
-      <h1>CF-Book 书库</h1>
+    <header class="topbar library-topbar">
+      <a class="library-brand" href="/library" aria-label="CF-Book 书库">
+        <span class="library-mark">观</span>
+        <strong>CF-Book</strong>
+      </a>
       <nav>
-        <a href="/library" class="active">书库</a>
+        <a href="/library" class="active">图书</a>
         <a href="/">上传</a>
         <a href="/download">下载</a>
       </nav>
-      <div id="user-area" class="user-area"></div>
+      <div class="library-actions">
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="切换到暗色模式">暗色</button>
+        <div id="user-area" class="user-area"></div>
+      </div>
     </header>
 
-    <main class="shell">
-      <section class="panel library-bar">
+    <main class="shell library-shell">
+      <section class="library-hero">
+        <p class="library-eyebrow">馆藏</p>
+        <div class="library-title-row">
+          <h1>书架</h1>
+          <span id="count"></span>
+        </div>
+        <p class="library-intro">一架旧书，半窗灯火。这里停着读过的、想读的，与舍不得读完的。</p>
+      </section>
+      <section class="library-bar">
         <input id="search" type="search" placeholder="搜索书名 / 作者 / 简介" />
         <select id="status">
           <option value="">全部状态</option>
@@ -27,7 +41,6 @@
           <option value="read">已读</option>
           <option value="favorite">收藏</option>
         </select>
-        <span id="count"></span>
       </section>
       <div id="books" class="books"></div>
       <div class="more-row"><button id="more" class="more-btn" hidden>加载更多</button></div>
