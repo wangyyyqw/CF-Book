@@ -89,7 +89,7 @@ test('搜索时总数跟随筛选条件', async () => {
   addBook(env.DB, { id: 'b2', title: '示例书籍A', author: '示例作者', created: 2 });
   addBook(env.DB, { id: 'b3', title: '阿加莎全集', author: '阿加莎', created: 3 });
 
-  const byTitle = await list(env, '?q=荒凉');
+  const byTitle = await list(env, '?q=示例书籍A');
   assert.deepEqual(byTitle.books.map((b) => b.id), ['b2']);
   assert.equal(byTitle.total, 1);
 
