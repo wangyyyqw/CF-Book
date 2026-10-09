@@ -25,6 +25,7 @@
 - 通用搜索 API 只有配置 `BOOK_SEARCH_API_URL` 后才会启用，未配置时仍使用其他公开书目源。
 - 书名与作者元数据本身可能不完整，模型仍可能生成不准确标签；全量重分类会覆盖共享标签并消耗额度，须人工抽查重要书目。
 - NVIDIA 密钥密文优先使用独立的 `NVIDIA_CONFIG_SECRET` 派生，其次才用 `ADMIN_TOKEN`；更换正在使用的秘密后原密钥将不可解密，需要重新录入。
+- 当前生产配置曾选择已于 2026-08-07 退役的 NVIDIA 模型 `deepseek-ai/deepseek-v4-pro`；分类接口已对 NVIDIA 限制单本/次，终止性模型错误不再轮询全部密钥。修复版本默认推荐 `deepseek-ai/deepseek-v4.1-flash`。
 - 页面用量是按模型返回 token 估算的 Neurons，Cloudflare 控制台账单是最终口径。
 - 断点续传尚未实现；大文件仍受浏览器端合并内存限制。
 

@@ -19,7 +19,7 @@ test('NVIDIA 设置只返回遮罩密钥，密钥以密文保存并可轮换读�
     env,
     request: new Request('https://example.test/api/ai/nvidia', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'deepseek-ai/deepseek-v4-pro', keys: ['nvapi-secret-one', 'nvapi-secret-two'] }),
+      body: JSON.stringify({ model: 'deepseek-ai/deepseek-v4.1-flash', keys: ['nvapi-secret-one', 'nvapi-secret-two'] }),
     }),
   });
   assert.equal(put.status, 200);
@@ -27,7 +27,7 @@ test('NVIDIA 设置只返回遮罩密钥，密钥以密文保存并可轮换读�
   assert.doesNotMatch(saved.encrypted_keys, /nvapi-secret/);
   const response = await onRequestGet({ ...admin, env });
   const data = await response.json();
-  assert.equal(data.model, 'deepseek-ai/deepseek-v4-pro');
+  assert.equal(data.model, 'deepseek-ai/deepseek-v4.1-flash');
   assert.deepEqual(data.keys, ['nvapi-****-one', 'nvapi-****-two']);
   assert.doesNotMatch(JSON.stringify(data), /nvapi-secret/);
 });

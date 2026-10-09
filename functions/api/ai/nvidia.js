@@ -3,13 +3,14 @@ import { requireAdmin } from '../../utils/auth.js';
 import { err, json } from '../../utils/http.js';
 import { decryptKeys, encryptKeys, maskKey } from '../../utils/nvidia.js';
 
+const DEFAULT_MODEL = 'deepseek-ai/deepseek-v4.1-flash';
 const MODEL_RE = /^[A-Za-z0-9._/-]{2,160}$/;
 
 export async function onRequestGet(context) {
   const denied = requireAdmin(context);
   if (denied) return denied;
   const row = await dbGet(context.env, 'SELECT model, encrypted_keys FROM nvidia_ai_config WHERE id = 1');
-  if (!row) return json({ ok: true, model: 'deepseek-ai/deepseek-v4-pro', keys: [] });
+  if (!row) return json({ ok: true, model: DEFAULT_MODEL, keys: [] });
   const keys = await decryptKeys(context.env, row.encrypted_keys);
   return json({ ok: true, model: row.model, keys: keys.map(maskKey) });
 }

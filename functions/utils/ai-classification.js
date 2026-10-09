@@ -6,6 +6,7 @@ import { decryptKeys } from './nvidia.js';
 export const DEFAULT_AI_MODEL = '@cf/meta/llama-3.2-3b-instruct';
 export const DEFAULT_DAILY_LIMIT = 10000;
 export const MAX_AI_ATTEMPTS = 2;
+const MAX_NVIDIA_KEYS_PER_BOOK = 2;
 
 const MODEL_RATES = {
   '@cf/qwen/qwen3-30b-a3b-fp8': { input: 4625, output: 30475 },
@@ -119,7 +120,8 @@ async function runNvidia(env, config, prompt) {
   if (!keys.length) throw new Error('NVIDIA 模型已配置但没有可用密钥');
   const start = ((Number(config.next_key) || 0) % keys.length + keys.length) % keys.length;
   const errors = [];
-  for (let attempt = 0; attempt < keys.length; attempt += 1) {
+  let terminalError = false;
+  for (let attempt = 0; attempt < Math.min(keys.length, MAX_NVIDIA_KEYS_PER_BOOK); attempt += 1) {
     const index = (start + attempt) % keys.length;
     try {
       const response = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
@@ -138,15 +140,27 @@ async function runNvidia(env, config, prompt) {
         signal: AbortSignal.timeout(45000),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(`NVIDIA API HTTP ${response.status}: ${String(data?.error?.message || data?.detail || '').slice(0, 180)}`);
+      if (!response.ok) {
+        const detail = String(data?.error?.message || data?.detail || '').slice(0, 180);
+        const message = `NVIDIA API HTTP ${response.status}: ${detail}`;
+      if ([400, 404, 410, 422].includes(response.status)) throw Object.assign(new Error(message), { terminal: true });
+      if ([401, 403].includes(response.status)) throw Object.assign(new Error(message), { retryable: true });
+      throw Object.assign(new Error(message), { retryable: true });
+      }
       await dbRun(env, 'UPDATE nvidia_ai_config SET next_key = ?, updated_at = ? WHERE id = 1', (start + 1) % keys.length, nowSec());
       return { model: `nvidia:${config.model}`, response: data };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       errors.push(message.replaceAll(keys[index], '[已隐藏]'));
+      if (error.terminal === true) {
+        terminalError = true;
+        break;
+      }
+      if (error.name === 'AbortError' || error.name === 'TimeoutError') break;
     }
   }
-  await dbRun(env, 'UPDATE nvidia_ai_config SET next_key = ?, updated_at = ? WHERE id = 1', (start + 1) % keys.length, nowSec());
+  const nextKey = terminalError ? start : (start + 1) % keys.length;
+  await dbRun(env, 'UPDATE nvidia_ai_config SET next_key = ?, updated_at = ? WHERE id = 1', nextKey, nowSec());
   throw new Error(`NVIDIA 所有密钥请求失败：${errors.join('；')}`);
 }
 

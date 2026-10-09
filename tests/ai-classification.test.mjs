@@ -130,6 +130,28 @@ test('NVIDIA 模型按轮换游标选密钥，并在失败后切换下一把', a
   }
 });
 
+test('NVIDIA 410 模型退役时停止轮换密钥，避免浪费子请求', async () => {
+  const env = envWithBook();
+  env.ADMIN_TOKEN = 'test-only-admin-token-placeholder';
+  const encrypted = await encryptKeys(env, ['nvapi-first-secret', 'nvapi-second-secret', 'nvapi-third-secret']);
+  await env.DB.prepare('INSERT INTO nvidia_ai_config (id, model, encrypted_keys, next_key, updated_at) VALUES (1, ?, ?, 0, 0)')
+    .bind('deepseek-ai/deepseek-v4.1-flash', encrypted).run();
+  const calls = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    if (!options?.headers?.Authorization) return new Response('{}', { status: 200 });
+    calls.push(options.headers.Authorization);
+    return new Response(JSON.stringify({ error: { message: 'model end of life' } }), { status: 410 });
+  };
+  try {
+    await assert.rejects(classifyBook(env, 'b1'), /HTTP 410/);
+    assert.equal(calls.length, 1);
+    assert.equal((await env.DB.prepare('SELECT next_key FROM nvidia_ai_config WHERE id=1').first()).next_key, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('NVIDIA 调用失败时数据库错误记录不会泄漏密钥', async () => {
   const env = envWithBook();
   env.ADMIN_TOKEN = 'test-only-admin-token-placeholder';

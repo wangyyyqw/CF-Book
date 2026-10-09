@@ -95,7 +95,7 @@ async function classifyBatch({ force = false } = {}) {
       failed += data.results.filter((result) => result.error).length;
       $('ai-msg').textContent = `${force ? '重新分类' : '整理'}中：已处理 ${processed} 本${failed ? `，失败 ${failed} 本` : ''}`;
       await loadAiUsage();
-      if (!force || data.processed < 10) break;
+      if (!force || data.processed < data.batchLimit) break;
       offset += data.processed;
     }
     $('ai-msg').textContent = `${force ? '重新分类' : '本批处理'}完成，共 ${processed} 本${failed ? `，失败 ${failed} 本` : ''}`;

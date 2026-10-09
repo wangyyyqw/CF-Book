@@ -41,7 +41,9 @@ export async function onRequestPost(context) {
   if (denied) return denied;
   const { env, request } = context;
   const body = await request.json().catch(() => ({}));
-  const limit = Math.min(Math.max(Number(body.limit) || 10, 1), 50);
+  const requestedLimit = Math.min(Math.max(Number(body.limit) || 10, 1), 50);
+  const nvidiaConfig = await dbGet(env, 'SELECT id FROM nvidia_ai_config WHERE id = 1');
+  const limit = nvidiaConfig ? 1 : requestedLimit;
   const offset = Math.max(Number(body.offset) || 0, 0);
   const force = body.force === true;
   const start = Math.floor(Date.now() / 86400000) * 86400;
@@ -66,5 +68,12 @@ export async function onRequestPost(context) {
       results.push({ bookId: book.id, error: error.message });
     }
   }
-  return json({ ok: true, results, processed: results.length, finishedAt: nowSec() });
+  return json({
+    ok: true,
+    results,
+    processed: results.length,
+    batchLimit: limit,
+    hasMore: offset + books.length < Number((await dbGet(env, 'SELECT COUNT(*) AS count FROM books')).count || 0),
+    finishedAt: nowSec(),
+  });
 }
