@@ -41,10 +41,10 @@ tests/                     鉴权、书籍删除等单元测试（npm test）
 ```bash
 npm install -g wrangler
 wrangler login
-wrangler d1 create [D1_DATABASE_NAME]          # 复制输出的 database_id
+wrangler d1 create book-library-db     # 复制输出的 database_name 和 database_id
 sed -i '' "s/REPLACE_WITH_YOUR_D1_DATABASE_ID/<你的 database_id>/" wrangler.toml
-wrangler d1 execute [D1_DATABASE_NAME] --file schema.sql --remote
-wrangler pages dev public --d1 DB=[D1_DATABASE_NAME] --binding TG_BOT_TOKEN --binding TG_CHAT_ID --binding ADMIN_TOKEN
+wrangler d1 execute book-library-db --file schema.sql --remote
+wrangler pages dev public --d1 DB=book-library-db --binding TG_BOT_TOKEN --binding TG_CHAT_ID --binding ADMIN_TOKEN
 ```
 
 或在 Cloudflare Dashboard 配置以下环境变量/密钥后部署：
@@ -81,18 +81,11 @@ node scripts/cleanup-data.mjs --yes    # 真正执行
 
 执行顺序为 Telegram 分块消息 → D1 记录（`chunks`/`uploads`/`book_user_state`/`book_tags`/`tags`/`books`）→ R2 封面，结束后复核六张表计数是否归零。需要 `.dev.vars` 里有 `TG_BOT_TOKEN`，且 Bot 在频道内拥有删除消息权限。
 
-## 生产部署状态
+## 部署配置
 
-- Pages 项目：`cf-book`，生产地址会随每次部署生成新 URL，最新见 `wrangler pages deployment list --project-name cf-book`。
-- 生产 D1：`[D1_DATABASE_NAME]`（id `[D1_DATABASE_ID]`），`uploads`/`chunks`/`books`/`tags`/`book_user_state`/`users`/`sessions` 表已初始化。
-- 生产密钥：`TG_BOT_TOKEN`、`TG_CHAT_ID`、`ADMIN_TOKEN` 已通过 `wrangler pages secret put` 写入。
-- 已验证：20 MiB 文件（3 块）真实上传至 Telegram 私有频道 → D1 记录 → 逐块下载 → 合并 → SHA-256 与原文件一致。
-- 书库功能：上传完成后自动建档；书库列表（分页，每页 100 本，底部「加载更多」）、搜索、按个人状态筛选、共享标签、个人评分/状态、他人评分可见、详情编辑、下载原文件、删除。
-- 已验证（下载链路）：示例书籍A 35.25 MiB / 3 块，逐块哈希一致、合并后 SHA-256 与 D1 记录完全相同、字节数一致。
-- 已验证（分页）：`/api/books` 返回 `total`/`limit`/`offset`/`hasMore`，`limit=2` 三页取回 6 本不重不漏；`library.html`/`library.js`/`style.css` 线上与本地 md5 一致。
-- 已验证（账号体系全链路，线上 37/37 通过）：首次初始化令牌校验、账号创建与登录、错误密码/过短密码拒绝、成员上传建档、成员之间不能互相操作上传任务（分块/完成/中止均 403）、评分与阅读状态与收藏各自一份且互相可见（平均分 8.0、评分人数 2、记录带账号名）、标签共享且成员二可改、成员不能删书/改书/管账号、未登录 401、管理员不能删除或停用自己、删除书籍连带清空 D1 与频道消息。验收账号与测试书已全部回收，`legacy` 评分行按原值还原。
-- 已验证（净零残留的线上闭环）：`init → chunk → complete → 删除` 全链路 200，删除后 D1 三张表计数归零、频道内分块消息确认已消失，测试数据全部回收。
-- 已实现（AI 书名与标签整理）：管理员页显示每日 10,000 Neurons 免费额度、已用量、剩余量、成功/失败请求数和进度条；分类会用书名+作者并行查询 Google Books、中文维基、Open Library、豆瓣和可选搜索 API，抽取并截断简介、分类、标签和关键词后再调用 Workers AI，结果写入共享标签，不上传原始书籍文件。历史生产验证中 10 本书已完成分类；武侠作品按作者和题材规则补充“武侠”标签。
+部署信息由仓库维护者自行配置。不要在本仓库提交生产账号、数据库标识、部署 URL、密钥或真实书目数据。Cloudflare 资源 ID 应由部署者填入本地配置，运行密钥应使用 Cloudflare Secrets 或未跟踪的本地环境文件。
+
+生产部署状态和书目验收记录不纳入公开文档；请在自己的部署环境中完成验收并安全保存结果。
 - 当前版本支持管理员配置 OpenAI-compatible 或 Anthropic Messages 接口：HTTPS 地址、API Key、获取并选择模型；API Key 使用 AES-GCM 加密保存在 D1，读取配置时不回显密钥。未配置时回落到 Workers AI。
 - 管理员可在每本书详情页单独触发 AI 标签生成；页面可展开查看模型响应、最终标签和密钥轮换游标，不显示密钥内容。
 - AI 分类仅从 878 个标准标签中选出 3 个有序 ID（书籍类型、对应领域/题材、主题/设定）；低置信度结果要求人工审核，不写入自由标签。
@@ -111,17 +104,7 @@ node scripts/cleanup-data.mjs --yes    # 真正执行
 
 如需接入通用搜索 API，在 Pages 环境变量中设置 `BOOK_SEARCH_API_URL`（可用 `{query}` 占位符，或让程序追加 `q` 参数）和可选的 `BOOK_SEARCH_API_KEY`。Google Books 如需自己的配额可设置 `GOOGLE_BOOKS_API_KEY`。接口结果支持 `results`、`items` 或 `data` 数组，每条记录可提供 `title`/`name`、`author`/`authors`、`snippet`/`description`、`keywords`/`tags`/`categories` 字段；未配置或请求失败不会阻塞其他书目源和 AI 分类。
 
-配置通用 AI：登录管理员账号后打开 `/users`，选择协议，填入服务商提供的 HTTPS API 根地址与 API Key，点击“获取模型”并选择模型后保存。OpenAI-compatible 地址应为兼容 Chat Completions 的 API 根地址（例如 `https://api.example.com/v1`）；Anthropic Messages 地址应对应服务商要求的根地址（官方格式一般以 `/v1` 结尾）。自定义 Provider 下批处理每次只处理一本书，避免单次批量调用集中消耗服务商额度。API Key 不会由配置读取接口返回；`AI_CONFIG_SECRET` 优先用于派生 AES-GCM 加密密钥，否则使用 `ADMIN_TOKEN`。轮换加密秘密后，必须重新保存 API Key。
-
-书籍自带元数据仍可能没有分类信息，公开书目也可能匹配不到：
-
-用线上真实书库逐块下载合并后解析 OPF，三本 EPUB 的元数据里都没有任何 `subject` 元素（不是命名空间写法问题，是整个元素不存在），也没有 `calibre:series` / `belongs-to-collection`：
-
-| 书籍 | language | publisher | dc:subject | 系列 |
-| --- | --- | --- | --- | --- |
-| 示例书籍A | zh | 示例出版社 | 无 | 无 |
-| 示例书籍B | en（实际是中文书，元数据本身有误） | 无 | 无 | 无 |
-| 示例书籍C | zh | 示例出版社 | 无 | 无 |
+配置通用 AI：登录管理员账号后打开 `/users`，选择协议，填入服务商提供的 HTTPS API 根地址与 API Key，点击“获取模型”并选择模型后保存。OpenAI-compatible 地址应为兼容 Chat Completions 的 API 根地址；Anthropic Messages 地址应对应服务商要求的根地址。自定义 Provider 下批处理每次只处理一本书，避免单次批量调用集中消耗服务商额度。API Key 不会由配置读取接口返回；`AI_CONFIG_SECRET` 优先用于派生 AES-GCM 加密密钥，否则使用 `ADMIN_TOKEN`。轮换加密秘密后，必须重新保存 API Key。
 
 结论：AI 分类会优先使用公开书目资料，并从标准标签库中选取 3 个匹配项；查不到书目证据或需要审核时不写入标签。结果仍是辅助整理，不等同于人工编目，管理员应复核书名和标签。
 

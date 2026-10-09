@@ -4,12 +4,12 @@ pages_build_output_dir = "public"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "[D1_DATABASE_NAME]"
-database_id = "[D1_DATABASE_ID]"
+database_name = "REPLACE_WITH_YOUR_D1_DATABASE_NAME"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
 
 [[r2_buckets]]
 binding = "COVERS"
-bucket_name = "[R2_BUCKET_NAME]"
+bucket_name = "REPLACE_WITH_YOUR_R2_BUCKET_NAME"
 
 [ai]
 binding = "AI"
