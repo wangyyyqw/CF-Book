@@ -1,5 +1,6 @@
 import { extractFileMetadata, extractCoverFromFile } from '/metadata.js';
 import { api } from '/api.js';
+import { runUploadQueue } from '/upload-queue.js';
 
 const CHUNK_SIZE = 16 * 1024 * 1024; // 16MiB，低于 Telegram 20MiB 下载限制
 const UPLOAD_CONCURRENCY = 5; // 并发上传分块数（Telegram 不排斥并发，实测并行更快）
@@ -11,6 +12,8 @@ const abortBtn = $('abort');
 const progressEl = $('progress');
 const speedEl = $('speed');
 const logEl = $('log');
+const fileSummaryEl = $('file-summary');
+const queueEl = $('file-queue');
 
 function log(text) {
   const li = document.createElement('li');
@@ -25,18 +28,23 @@ async function sha256OfFile(file) {
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function uploadFile(file) {
+async function uploadFile(file, { signal, onLog = log } = {}) {
+  const report = (text) => onLog(`[${file.name}] ${text}`);
+  const checkAborted = () => {
+    if (signal?.aborted) throw new DOMException('上传已中止', 'AbortError');
+  };
   if (!crypto.subtle) {
     throw new Error('当前环境不支持 crypto.subtle，无法计算哈希');
   }
-  log('计算文件 SHA-256（大文件需要一点时间）…');
+  report('计算文件 SHA-256（大文件需要一点时间）…');
   let fileSha256 = '';
   if (file.size > 1024 * 1024 * 1024) {
-    log('超大文件（>1GB）跳过整书哈希计算，分块哈希已保证数据完整性');
+    report('超大文件（>1GB）跳过整书哈希计算，分块哈希已保证数据完整性');
   } else {
     fileSha256 = await sha256OfFile(file);
-    log(`文件 SHA-256: ${fileSha256.slice(0, 16)}…`);
+    report(`文件 SHA-256: ${fileSha256.slice(0, 16)}…`);
   }
+  checkAborted();
 
   // 尝试从文件内部提取元数据（EPUB/PDF/MOBI）
   let meta = { title: '', author: '', format: '', publisher: '', language: '', isbn: '', description: '', date: '' };
@@ -44,18 +52,19 @@ async function uploadFile(file) {
   try {
     const t0 = performance.now();
     meta = await extractFileMetadata(file, file.name);
-    if (meta.title) log(`识别书名：${meta.title}`);
-    if (meta.author) log(`识别作者：${meta.author}`);
-    if (meta.isbn) log(`识别 ISBN：${meta.isbn}`);
+    if (meta.title) report(`识别书名：${meta.title}`);
+    if (meta.author) report(`识别作者：${meta.author}`);
+    if (meta.isbn) report(`识别 ISBN：${meta.isbn}`);
     if (file.name.toLowerCase().endsWith('.epub')) {
       cover = await extractCoverFromFile(file, file.name);
-      if (cover?.bytes) log(`识别到内嵌封面（${(cover.bytes.byteLength / 1024).toFixed(0)}KB）`);
-      else if (cover?.url) log('识别到外链封面，入库时由服务端抓取');
+      if (cover?.bytes) report(`识别到内嵌封面（${(cover.bytes.byteLength / 1024).toFixed(0)}KB）`);
+      else if (cover?.url) report('识别到外链封面，入库时由服务端抓取');
     }
-    log(`元数据提取耗时 ${((performance.now() - t0) / 1000).toFixed(1)}s`);
+    report(`元数据提取耗时 ${((performance.now() - t0) / 1000).toFixed(1)}s`);
   } catch (e) {
-    log(`元数据提取失败（不影响上传）：${e.message}`);
+    report(`元数据提取失败（不影响上传）：${e.message}`);
   }
+  checkAborted();
 
   const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
   const initRes = await api('/api/upload/init', {
@@ -69,11 +78,12 @@ async function uploadFile(file) {
       sha256: fileSha256,
       meta,
     }),
+    signal,
   });
   const init = await initRes.json();
   if (!initRes.ok || !init.ok) throw new Error(init.error || '初始化上传失败');
   const uploadId = init.uploadId;
-  log(`已初始化：${uploadId}，共 ${totalChunks} 块`);
+  report(`已初始化：${uploadId}，共 ${totalChunks} 块`);
 
   // 并发上传分块（保持顺序进度统计）
   let doneCount = 0;
@@ -100,7 +110,7 @@ async function uploadFile(file) {
     fd.append('index', String(i));
     fd.append('file', blob, `${file.name}.part${String(i).padStart(3, '0')}`);
 
-    const res = await api(`/api/upload/chunk`, { method: 'POST', body: fd });
+    const res = await api(`/api/upload/chunk`, { method: 'POST', body: fd, signal });
     const data = await res.json();
     if (!res.ok || !data.ok) {
       throw new Error(`分块 ${i + 1}/${totalChunks} 失败: ${data.error || res.status}`);
@@ -109,7 +119,7 @@ async function uploadFile(file) {
     doneCount++;
     setProgress((doneCount / totalChunks) * 100);
     if (doneCount % 5 === 0 || doneCount === totalChunks) {
-      log(`分块 ${doneCount}/${totalChunks} 已完成`);
+      report(`分块 ${doneCount}/${totalChunks} 已完成`);
     }
   };
 
@@ -121,13 +131,17 @@ async function uploadFile(file) {
     }
   };
   let nextIndex = 0;
-  await Promise.all(Array.from({ length: Math.min(UPLOAD_CONCURRENCY, totalChunks) }, worker));
-  clearInterval(speedTimer);
+  try {
+    await Promise.all(Array.from({ length: Math.min(UPLOAD_CONCURRENCY, totalChunks) }, worker));
+  } finally {
+    clearInterval(speedTimer);
+  }
 
   const done = await api('/api/upload/complete', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ uploadId, sha256: fileSha256, meta }),
+    signal,
   });
   const result = await done.json();
   if (!done.ok || !result.ok) throw new Error(result.error || '完成入库失败');
@@ -135,26 +149,26 @@ async function uploadFile(file) {
     if (cover.url) {
       const fd = new FormData();
       fd.append('sourceUrl', cover.url);
-      const coverRes = await api(`/api/books/${result.bookId}/cover`, { method: 'POST', body: fd });
-      if (coverRes.ok) log('外链封面已抓取并保存');
-      else log('外链封面抓取失败（不影响入库）');
-      log('入库完成，可在“下载”页找到该书');
+      const coverRes = await api(`/api/books/${result.bookId}/cover`, { method: 'POST', body: fd, signal });
+      if (coverRes.ok) report('外链封面已抓取并保存');
+      else report('外链封面抓取失败（不影响入库）');
+      report('入库完成，可在“下载”页找到该书');
       return uploadId;
     }
     let compressed = cover;
     try {
       compressed = await compressCover(cover.bytes, cover.mime);
-      log(`封面压缩：${(cover.bytes.byteLength / 1024).toFixed(0)}KB → ${(compressed.byteLength / 1024).toFixed(0)}KB`);
+      report(`封面压缩：${(cover.bytes.byteLength / 1024).toFixed(0)}KB → ${(compressed.byteLength / 1024).toFixed(0)}KB`);
     } catch (e) {
-      log(`封面压缩失败，使用原图：${e.message}`);
+      report(`封面压缩失败，使用原图：${e.message}`);
     }
     const fd = new FormData();
     fd.append('file', new Blob([compressed], { type: 'image/webp' }), 'cover.webp');
-    const coverRes = await api(`/api/books/${result.bookId}/cover`, { method: 'POST', body: fd });
-    if (coverRes.ok) log('封面已保存');
-    else log('封面上传失败（不影响入库）');
+    const coverRes = await api(`/api/books/${result.bookId}/cover`, { method: 'POST', body: fd, signal });
+    if (coverRes.ok) report('封面已保存');
+    else report('封面上传失败（不影响入库）');
   }
-  log('入库完成，可在“下载”页找到该书');
+  report('入库完成，可在“下载”页找到该书');
   return uploadId;
 }
 
@@ -191,24 +205,68 @@ async function compressCover(bytes, mime) {
 
 let currentUpload = null;
 
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+function renderQueue(files, statuses = new Map()) {
+  queueEl.innerHTML = files.map((file) => {
+    const status = statuses.get(file) || '等待上传';
+    return `<li><span>${escapeHtml(file.name)}</span><strong>${escapeHtml(status)}</strong></li>`;
+  }).join('');
+}
+
+fileEl.addEventListener('change', () => {
+  const files = [...fileEl.files];
+  fileSummaryEl.textContent = files.length
+    ? `已选择 ${files.length} 本书`
+    : '可一次选择多本书，系统会按顺序上传。';
+  renderQueue(files);
+});
+
 startBtn.addEventListener('click', async () => {
-  const file = fileEl.files[0];
-  if (!file) {
+  const files = [...fileEl.files];
+  if (!files.length) {
     log('请先选择文件');
     return;
   }
   startBtn.disabled = true;
   abortBtn.disabled = false;
   try {
-    currentUpload = { aborted: false };
     const controller = new AbortController();
-    currentUpload.controller = controller;
-    await uploadFile(file);
+    currentUpload = { controller };
+    const statuses = new Map(files.map((file) => [file, '等待上传']));
+    renderQueue(files, statuses);
+    const results = await runUploadQueue(files, (file) => uploadFile(file, {
+      signal: controller.signal,
+      onLog: log,
+    }), {
+      signal: controller.signal,
+      onStart: (file) => {
+        statuses.set(file, '上传中');
+        setProgress(0);
+        renderQueue(files, statuses);
+      },
+      onSuccess: (file) => { statuses.set(file, '已完成'); renderQueue(files, statuses); },
+      onError: (file, error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        statuses.set(file, `失败：${message}`);
+        renderQueue(files, statuses);
+      },
+      onCancel: (file) => { statuses.set(file, '已中止'); renderQueue(files, statuses); },
+    });
+    const completed = results.filter((result) => result.status === 'completed').length;
+    const failed = results.filter((result) => result.status === 'failed').length;
+    const cancelled = results.filter((result) => result.status === 'cancelled').length;
+    log(`批量上传结束：完成 ${completed} 本，失败 ${failed} 本，中止 ${cancelled} 本`);
   } catch (e) {
-    log(`错误: ${e.message}`);
+    log(`批量上传错误: ${e.message}`);
   } finally {
     startBtn.disabled = false;
     abortBtn.disabled = true;
+    currentUpload = null;
   }
 });
 

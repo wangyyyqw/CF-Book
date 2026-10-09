@@ -724,6 +724,30 @@ body.library-page.library-dark {
   border-color: #555a61;
 }
 
+.upload-queue {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.8rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.upload-queue li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.upload-queue li strong {
+  color: var(--ink);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* 书籍详情 */
 .book-form {
   display: flex;

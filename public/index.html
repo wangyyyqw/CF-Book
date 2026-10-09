@@ -19,8 +19,10 @@
 
     <main class="shell">
       <section class="panel">
-        <h2>上传一本书</h2>
-        <input id="file" type="file" />
+        <h2>批量上传书籍</h2>
+        <input id="file" type="file" multiple />
+        <p id="file-summary" class="form-msg">可一次选择多本书，系统会按顺序上传。</p>
+        <ul id="file-queue" class="upload-queue"></ul>
         <div class="actions">
           <button id="start">开始上传</button>
           <button id="abort" disabled>中止</button>
