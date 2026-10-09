@@ -516,7 +516,7 @@ body.library-page {
 }
 
 @media (max-width: 470px) {
-  .books { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .books { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem 0.55rem; }
 }
 
 .book-card {
