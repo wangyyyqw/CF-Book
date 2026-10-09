@@ -7,7 +7,6 @@ const countEl = $('count');
 const previousEl = $('previous-page');
 const nextEl = $('next-page');
 const pageIndicator = $('page-indicator');
-const themeToggle = $('theme-toggle');
 const tagFilterEl = $('tag-filter');
 const recommendEl = $('recommend-books');
 const recommendNote = $('recommend-note');
@@ -163,10 +162,4 @@ window.addEventListener('resize', () => {
     if (pageSize !== pageSizeForWidth()) load({ reset: true });
     loadRecommendations();
   }, 180);
-});
-
-themeToggle.addEventListener('click', () => {
-  const dark = document.body.classList.toggle('library-dark');
-  themeToggle.textContent = dark ? '浅色' : '暗色';
-  themeToggle.setAttribute('aria-label', dark ? '切换到浅色模式' : '切换到暗色模式');
 });

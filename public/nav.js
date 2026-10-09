@@ -23,4 +23,15 @@ loadMe().then((data) => {
   document.querySelector('.library-menu-list')?.addEventListener('click', (event) => {
     if (event.target.closest('a')) area.closest('.library-menu')?.removeAttribute('open');
   });
+  const theme = document.getElementById('theme-toggle');
+  if (theme) {
+    const dark = localStorage.getItem('cf-book-theme') === 'dark';
+    document.body.classList.toggle('library-dark', dark);
+    theme.textContent = dark ? '浅色模式' : '暗色模式';
+    theme.addEventListener('click', () => {
+      const enabled = document.body.classList.toggle('library-dark');
+      localStorage.setItem('cf-book-theme', enabled ? 'dark' : 'light');
+      theme.textContent = enabled ? '浅色模式' : '暗色模式';
+    });
+  }
 });

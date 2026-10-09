@@ -327,6 +327,53 @@ body.library-page {
   background-size: auto, 28px 28px, auto;
 }
 
+/* 书库主题共享给上传、下载、详情和管理页面。 */
+body.library-page:not(.library-page.library-dark) {
+  min-height: 100vh;
+}
+
+body.library-page .shell {
+  max-width: 1240px;
+}
+
+body.library-page .shell > .panel {
+  border: 1px solid #d8cdb9;
+  border-radius: 2px;
+  background: rgba(255, 250, 240, 0.72);
+  box-shadow: 0 12px 28px rgba(80, 59, 35, 0.06);
+}
+
+body.library-page .shell > .panel h2 {
+  margin-top: 0;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+
+body.library-page input,
+body.library-page textarea,
+body.library-page select,
+body.library-page button {
+  border-radius: 0;
+}
+
+body.library-page .tasks th,
+body.library-page .tasks td {
+  border-bottom-color: #d8cdb9;
+}
+
+body.library-page .upload-queue,
+body.library-page .log {
+  background: rgba(242, 238, 227, 0.55);
+}
+
+body.library-page .library-shell > .panel:first-child {
+  margin-top: 2rem;
+}
+
+body.library-page .library-shell > .panel:not(:first-child) {
+  margin-top: 1rem;
+}
+
 .library-page .topbar {
   min-height: 60px;
   padding: 0.7rem clamp(1rem, 6vw, 5rem);
@@ -463,6 +510,12 @@ body.library-page {
 .library-hero {
   padding: 3.5rem 0 2.5rem;
   border-bottom: 2px solid var(--line);
+}
+
+.library-hero > .library-title-row > .library-eyebrow { margin: 0; }
+
+.library-hero > .library-title-row + .library-intro {
+  margin-top: 0.35rem;
 }
 
 .library-eyebrow {
@@ -839,6 +892,21 @@ body.library-page.library-dark {
 
 .library-dark .library-intro {
   color: #c8c0b3;
+}
+
+.library-dark .shell > .panel {
+  border-color: #625d54;
+  background: rgba(38, 37, 34, 0.82);
+}
+
+.library-dark .tasks th,
+.library-dark .tasks td {
+  border-bottom-color: #625d54;
+}
+
+.library-dark .upload-queue,
+.library-dark .log {
+  background: rgba(27, 27, 26, 0.55);
 }
 
 .more-btn:hover:not(:disabled) {

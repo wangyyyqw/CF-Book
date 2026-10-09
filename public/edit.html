@@ -6,13 +6,21 @@
     <title>CF-Book · 修改书籍</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
-  <body>
-    <header class="topbar">
-      <h1>CF-Book</h1>
-      <nav><a href="/library">书库</a><a href="/">上传</a><a href="/download">下载</a></nav>
-      <div id="user-area" class="user-area"></div>
+  <body class="library-page">
+    <header class="topbar library-topbar">
+      <a class="library-brand" href="/library" aria-label="CF-Book 书库">
+        <span class="library-mark">观</span><strong>CF-Book</strong>
+      </a>
+      <details class="library-menu">
+        <summary aria-label="展开导航菜单"><span></span><span></span><span></span></summary>
+        <div class="library-menu-list">
+          <a href="/library" class="active">图书</a><a href="/">上传</a><a href="/download">下载</a>
+          <button id="theme-toggle" class="theme-toggle" type="button">暗色模式</button>
+          <div id="user-area" class="user-area"></div>
+        </div>
+      </details>
     </header>
-    <main class="shell">
+    <main class="shell library-shell">
       <section class="panel">
         <p class="book-meta"><a id="back-book" href="#">返回详情</a></p>
         <h2>修改书籍</h2>
