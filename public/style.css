@@ -375,6 +375,9 @@ body.library-page .library-shell > .panel:not(:first-child) {
 }
 
 .library-page .topbar {
+  position: relative;
+  z-index: 30;
+  align-items: center;
   min-height: 60px;
   padding: 0.7rem clamp(1rem, 6vw, 5rem);
   border-bottom: 2px solid var(--line);
@@ -385,6 +388,7 @@ body.library-page .library-shell > .panel:not(:first-child) {
 .library-brand {
   display: inline-flex;
   align-items: center;
+  line-height: 1;
   gap: 0.55rem;
   color: var(--ink);
   text-decoration: none;
@@ -393,14 +397,16 @@ body.library-page .library-shell > .panel:not(:first-child) {
 
 .library-mark {
   display: grid;
-  width: 2rem;
-  height: 2rem;
+  width: 2.8rem;
+  height: 2.8rem;
   place-items: center;
   border: 1px solid var(--ink);
   border-radius: 50%;
   color: var(--accent);
-  font-size: 1.05rem;
+  font-size: 1.45rem;
 }
+
+.library-brand strong { font-size: 1.4rem; }
 
 .library-page .topbar nav a,
 .library-page .user-area .user-link {
@@ -444,7 +450,7 @@ body.library-page .library-shell > .panel:not(:first-child) {
 
 .library-menu {
   position: relative;
-  z-index: 5;
+  z-index: 31;
   margin-left: auto;
 }
 
@@ -467,6 +473,7 @@ body.library-page .library-shell > .panel:not(:first-child) {
   position: absolute;
   top: calc(100% + 0.55rem);
   right: 0;
+  z-index: 32;
   display: grid;
   min-width: 12rem;
   padding: 0.45rem;
@@ -500,6 +507,21 @@ body.library-page .library-shell > .panel:not(:first-child) {
 .library-page .library-menu-list .user-area .user-name { padding: 0.65rem 0.8rem; }
 .library-page .library-menu-list .user-area .user-logout { border-radius: 0; }
 
+.library-page .theme-toggle {
+  flex: 0 0 auto;
+  margin-left: 0.7rem;
+  padding: 0.45rem 0.25rem;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.library-page .theme-toggle:hover { color: var(--accent); }
+
 .library-page .shell {
   max-width: 1240px;
   margin-top: 0;
@@ -508,11 +530,21 @@ body.library-page .library-shell > .panel:not(:first-child) {
 }
 
 .library-hero {
-  padding: 3.5rem 0 2.5rem;
+  padding: 1.8rem 0 1.35rem;
   border-bottom: 2px solid var(--line);
 }
 
 .library-hero > .library-title-row > .library-eyebrow { margin: 0; }
+
+.library-hero .library-eyebrow {
+  font-size: 1rem;
+  letter-spacing: 0.14em;
+}
+
+.library-hero #count {
+  margin-top: 0;
+  font-size: 0.95rem;
+}
 
 .library-hero > .library-title-row + .library-intro {
   margin-top: 0.35rem;
@@ -592,6 +624,30 @@ body.library-page .library-shell > .panel:not(:first-child) {
   letter-spacing: 0.1em;
 }
 
+.recommend-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.recommend-refresh {
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.recommend-refresh:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.recommend-refresh:disabled { opacity: 0.45; cursor: wait; }
+
 .library-page .recommend-books {
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 0.8rem;
@@ -601,6 +657,7 @@ body.library-page .library-shell > .panel:not(:first-child) {
 .recommend-books .bc-title,
 .recommend-books .bc-author {
   font-size: 0.72rem;
+  text-align: center;
 }
 
 .recommend-books .bc-status,

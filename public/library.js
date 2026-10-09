@@ -10,6 +10,7 @@ const pageIndicator = $('page-indicator');
 const tagFilterEl = $('tag-filter');
 const recommendEl = $('recommend-books');
 const recommendNote = $('recommend-note');
+const refreshRecommendations = $('refresh-recommendations');
 
 const STATUS_LABEL = { unread: '未读', reading: '在读', read: '已读', favorite: '收藏' };
 const STATUS_CLASS = { unread: 's-unread', reading: 's-reading', read: 's-read', favorite: 's-fav' };
@@ -52,12 +53,17 @@ function cardHtml(b, index) {
 
 async function loadRecommendations() {
   const columns = columnsForWidth();
-  const res = await api(`/api/books?recommended=1&limit=${columns}`);
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.ok) return;
-  recommendEl.innerHTML = data.books.map((book, index) => cardHtml(book, index)).join('');
-  recommendNote.textContent = `随机抽取 ${data.books.length} 本`;
-  if (!data.books.length) recommendEl.innerHTML = '<p class="empty">书库还没有推荐书籍。</p>';
+  refreshRecommendations.disabled = true;
+  try {
+    const res = await api(`/api/books?recommended=1&limit=${columns}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) return;
+    recommendEl.innerHTML = data.books.map((book, index) => cardHtml(book, index)).join('');
+    recommendNote.textContent = `随机抽取 ${data.books.length} 本`;
+    if (!data.books.length) recommendEl.innerHTML = '<p class="empty">书库还没有推荐书籍。</p>';
+  } finally {
+    refreshRecommendations.disabled = false;
+  }
 }
 
 function columnsForWidth() {
@@ -142,6 +148,7 @@ statusEl.addEventListener('change', () => load({ reset: true }));
 tagFilterEl.addEventListener('change', () => load({ reset: true }));
 previousEl.addEventListener('click', () => changePage(-1));
 nextEl.addEventListener('click', () => changePage(1));
+refreshRecommendations.addEventListener('click', loadRecommendations);
 
 function debounce(fn, ms) {
   let t;
