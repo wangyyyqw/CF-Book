@@ -31,7 +31,13 @@ export async function onRequest(context) {
     }
   }
 
-  return withCors(await next());
+  try {
+    return withCors(await next());
+  } catch (error) {
+    if (!path.startsWith('/api')) throw error;
+    console.error('API 请求未处理异常', error);
+    return withCors(err('服务器暂时不可用，请稍后重试', 500));
+  }
 }
 
 function withCors(response) {

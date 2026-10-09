@@ -38,7 +38,21 @@ export async function onRequestPost(context) {
 
   const sha256 = await sha256Hex(bytes);
   const fileName = `${upload.filename}.part${String(index).padStart(3, '0')}`;
-  const tg = await tgSendChunk(env, bytes, fileName);
+  let tg;
+  try {
+    tg = await tgSendChunk(env, bytes, fileName);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await dbRun(
+      env,
+      `UPDATE chunks SET status = 'failed', error = ?, updated_at = ? WHERE upload_id = ? AND idx = ?`,
+      message.slice(0, 500),
+      nowSec(),
+      uploadId,
+      index
+    );
+    return err(`分块上传失败：${message}`, 502);
+  }
 
   await dbRun(
     env,

@@ -1,6 +1,7 @@
 import { extractFileMetadata, extractCoverFromFile } from '/metadata.js';
 import { api } from '/api.js';
 import { runUploadQueue } from '/upload-queue.js';
+import { readJsonResponse, responseError, wait } from '/upload-http.js';
 
 const CHUNK_SIZE = 16 * 1024 * 1024; // 16MiB，低于 Telegram 20MiB 下载限制
 const UPLOAD_CONCURRENCY = 5; // 并发上传分块数（Telegram 不排斥并发，实测并行更快）
@@ -14,6 +15,7 @@ const speedEl = $('speed');
 const logEl = $('log');
 const fileSummaryEl = $('file-summary');
 const queueEl = $('file-queue');
+const CHUNK_RETRIES = 3;
 
 function log(text) {
   const li = document.createElement('li');
@@ -80,8 +82,8 @@ async function uploadFile(file, { signal, onLog = log } = {}) {
     }),
     signal,
   });
-  const init = await initRes.json();
-  if (!initRes.ok || !init.ok) throw new Error(init.error || '初始化上传失败');
+  const init = await readJsonResponse(initRes, '初始化上传');
+  if (!initRes.ok || !init.ok) throw responseError(initRes, init, '初始化上传');
   const uploadId = init.uploadId;
   report(`已初始化：${uploadId}，共 ${totalChunks} 块`);
 
@@ -110,17 +112,30 @@ async function uploadFile(file, { signal, onLog = log } = {}) {
     fd.append('index', String(i));
     fd.append('file', blob, `${file.name}.part${String(i).padStart(3, '0')}`);
 
-    const res = await api(`/api/upload/chunk`, { method: 'POST', body: fd, signal });
-    const data = await res.json();
-    if (!res.ok || !data.ok) {
-      throw new Error(`分块 ${i + 1}/${totalChunks} 失败: ${data.error || res.status}`);
+    let lastError;
+    for (let attempt = 1; attempt <= CHUNK_RETRIES; attempt++) {
+      checkAborted();
+      try {
+        const res = await api(`/api/upload/chunk`, { method: 'POST', body: fd, signal });
+        const data = await readJsonResponse(res, `分块 ${i + 1}/${totalChunks}`);
+        if (!res.ok || !data.ok) throw responseError(res, data, `分块 ${i + 1}/${totalChunks}`);
+        uploadedBytes += end - start;
+        doneCount++;
+        setProgress((doneCount / totalChunks) * 100);
+        if (doneCount % 5 === 0 || doneCount === totalChunks) {
+          report(`分块 ${doneCount}/${totalChunks} 已完成`);
+        }
+        return;
+      } catch (error) {
+        if (error?.name === 'AbortError') throw error;
+        lastError = error;
+        if (!(error instanceof Error) || error.name === 'TypeError') error.retryable = true;
+        if (!error.retryable || attempt === CHUNK_RETRIES) throw error;
+        report(`分块 ${i + 1}/${totalChunks} 第 ${attempt} 次失败，${attempt + 1} 秒后重试…`);
+        await wait(attempt * 1000);
+      }
     }
-    uploadedBytes += end - start;
-    doneCount++;
-    setProgress((doneCount / totalChunks) * 100);
-    if (doneCount % 5 === 0 || doneCount === totalChunks) {
-      report(`分块 ${doneCount}/${totalChunks} 已完成`);
-    }
+    throw lastError;
   };
 
   const worker = async () => {
@@ -143,8 +158,8 @@ async function uploadFile(file, { signal, onLog = log } = {}) {
     body: JSON.stringify({ uploadId, sha256: fileSha256, meta }),
     signal,
   });
-  const result = await done.json();
-  if (!done.ok || !result.ok) throw new Error(result.error || '完成入库失败');
+  const result = await readJsonResponse(done, '完成入库');
+  if (!done.ok || !result.ok) throw responseError(done, result, '完成入库');
   if (result.bookId && cover) {
     if (cover.url) {
       const fd = new FormData();
