@@ -7,6 +7,53 @@ let me = null;
 
 const ROLE_LABEL = { admin: '管理员', member: '成员' };
 
+async function loadNvidiaConfig() {
+  const status = $('nvidia-current');
+  const res = await api('/api/ai/nvidia');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) {
+    status.textContent = `NVIDIA 设置读取失败：${data.error || res.status}`;
+    return;
+  }
+  const select = $('nvidia-model-select');
+  const custom = $('nvidia-model-custom');
+  if ([...select.options].some((option) => option.value === data.model)) select.value = data.model;
+  else {
+    select.value = 'custom';
+    custom.value = data.model;
+  }
+  custom.hidden = select.value !== 'custom';
+  status.textContent = data.keys.length
+    ? `已启用 ${data.model} · ${data.keys.length} 把密钥：${data.keys.join('、')}`
+    : '尚未配置 NVIDIA 密钥，分类使用 Workers AI。';
+}
+
+async function saveNvidiaConfig(event) {
+  event.preventDefault();
+  const select = $('nvidia-model-select');
+  const model = select.value === 'custom' ? $('nvidia-model-custom').value.trim() : select.value;
+  const keys = $('nvidia-keys').value.split(/\r?\n/).map((key) => key.trim()).filter(Boolean);
+  $('nvidia-save').disabled = true;
+  $('nvidia-status').textContent = '正在加密保存…';
+  try {
+    const res = await api('/api/ai/nvidia', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, keys }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      $('nvidia-status').textContent = `保存失败：${data.error || res.status}`;
+      return;
+    }
+    $('nvidia-keys').value = '';
+    $('nvidia-status').textContent = '设置已保存；密钥仅以遮罩形式显示。';
+    await loadNvidiaConfig();
+  } finally {
+    $('nvidia-save').disabled = false;
+  }
+}
+
 async function loadAiUsage() {
   const res = await api('/api/ai/classify');
   const data = await res.json().catch(() => ({}));
@@ -199,6 +246,7 @@ loadMe().then((data) => {
   }
   load();
   loadAiUsage();
+  loadNvidiaConfig();
 });
 
 $('ai-classify').addEventListener('click', classifyBatch);
@@ -207,3 +255,7 @@ $('ai-reclassify-all').addEventListener('click', () => {
     classifyBatch({ force: true });
   }
 });
+$('nvidia-model-select').addEventListener('change', () => {
+  $('nvidia-model-custom').hidden = $('nvidia-model-select').value !== 'custom';
+});
+$('nvidia-form').addEventListener('submit', saveNvidiaConfig);

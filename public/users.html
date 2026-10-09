@@ -66,6 +66,22 @@
       </section>
 
       <section class="panel">
+        <h2>NVIDIA 标签模型</h2>
+        <p class="form-msg">可手动填写 NVIDIA API 密钥（每行一个，最多 10 个），系统会加密保存并轮换调用。密钥仅在此处提交给 CF-Book 服务，不会返回明文；保存新密钥将替换当前密钥列表。NVIDIA 额度和可用模型以官方账户页面为准。</p>
+        <form id="nvidia-form" class="inline-form">
+          <select id="nvidia-model-select">
+            <option value="deepseek-ai/deepseek-v4-pro">DeepSeek V4 Pro</option>
+            <option value="custom">自定义模型 ID</option>
+          </select>
+          <input id="nvidia-model-custom" placeholder="例如：厂商/模型名称" hidden />
+          <textarea id="nvidia-keys" rows="4" placeholder="nvapi-...（每行一个密钥；留空可清除 NVIDIA 配置并恢复 Workers AI）" autocomplete="off" spellcheck="false"></textarea>
+          <button id="nvidia-save" type="submit">保存 NVIDIA 设置</button>
+          <span id="nvidia-status" class="form-msg"></span>
+        </form>
+        <div id="nvidia-current" class="form-msg">正在读取 NVIDIA 设置…</div>
+      </section>
+
+      <section class="panel">
         <h2>修改我的密码</h2>
         <form id="password-form" class="inline-form">
           <input id="current-password" type="password" placeholder="当前密码" autocomplete="current-password" required />

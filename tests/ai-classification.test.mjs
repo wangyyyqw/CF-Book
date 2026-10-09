@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { BOOK_TAGS, classifyBook, estimateNeurons, normalizeResult } from '../functions/utils/ai-classification.js';
 import { createD1 } from './helpers/d1.mjs';
+import { encryptKeys } from '../functions/utils/nvidia.js';
 
 function envWithBook() {
   const DB = createD1();
@@ -96,6 +97,56 @@ test('分类以书名作者检索多来源并把短参考信息交给 AI', async
     assert.match(prompt, /短参考信息/);
     assert.match(prompt, /银河英雄传说/);
     assert.doesNotMatch(prompt, /book\.epub/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('NVIDIA 模型按轮换游标选密钥，并在失败后切换下一把', async () => {
+  const env = envWithBook();
+  env.ADMIN_TOKEN = 'test-only-admin-token-placeholder';
+  const encrypted = await encryptKeys(env, ['nvapi-first-secret', 'nvapi-second-secret']);
+  await env.DB.prepare('INSERT INTO nvidia_ai_config (id, model, encrypted_keys, next_key, updated_at) VALUES (1, ?, ?, 0, 0)')
+    .bind('test/model', encrypted).run();
+  const calls = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    if (!options?.headers?.Authorization) return new Response('{}', { status: 200 });
+    const key = options.headers.Authorization;
+    calls.push(key);
+    if (key.endsWith('first-secret')) return new Response(JSON.stringify({ error: { message: 'bad key' } }), { status: 401 });
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ title: '银河英雄传说', tags: ['科幻', '小说', '其他'] }) } }], usage: { prompt_tokens: 20, completion_tokens: 10 } }), { status: 200 });
+  };
+  try {
+    const result = await classifyBook(env, 'b1');
+    assert.equal(result.tags[0], '科幻');
+    assert.deepEqual(calls, ['Bearer nvapi-first-secret', 'Bearer nvapi-second-secret']);
+    assert.equal((await env.DB.prepare('SELECT next_key FROM nvidia_ai_config WHERE id=1').first()).next_key, 1);
+    const usage = await env.DB.prepare('SELECT model, neurons FROM ai_usage').first();
+    assert.equal(usage.model, 'nvidia:test/model');
+    assert.equal(usage.neurons, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('NVIDIA 调用失败时数据库错误记录不会泄漏密钥', async () => {
+  const env = envWithBook();
+  env.ADMIN_TOKEN = 'test-only-admin-token-placeholder';
+  const encrypted = await encryptKeys(env, ['nvapi-hidden-secret']);
+  await env.DB.prepare('INSERT INTO nvidia_ai_config (id, model, encrypted_keys, next_key, updated_at) VALUES (1, ?, ?, 0, 0)')
+    .bind('test/model', encrypted).run();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    if (String(url).startsWith('https://integrate.api.nvidia.com/')) {
+      return new Response(JSON.stringify({ error: { message: 'request rejected' } }), { status: 401 });
+    }
+    return new Response('{}', { status: 200 });
+  };
+  try {
+    await assert.rejects(classifyBook(env, 'b1'), /所有密钥请求失败/);
+    const row = await env.DB.prepare('SELECT error FROM ai_classifications WHERE book_id=?').bind('b1').first();
+    assert.doesNotMatch(row.error, /nvapi-hidden-secret/);
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -1,6 +1,7 @@
 import { dbGet, dbRun, nowSec } from './db.js';
 import { replaceTags } from './tags.js';
 import { BOOK_TAGS, EXTERNAL_TAG_ALIASES, GENERIC_TAGS, tagCategory } from './tag-catalog.js';
+import { decryptKeys } from './nvidia.js';
 
 export const DEFAULT_AI_MODEL = '@cf/meta/llama-3.2-3b-instruct';
 export const DEFAULT_DAILY_LIMIT = 10000;
@@ -20,6 +21,7 @@ export function dailyLimit(env) {
 }
 
 export function estimateNeurons(promptTokens, completionTokens, model = DEFAULT_AI_MODEL) {
+  if (model.startsWith('nvidia:')) return 0;
   const rates = MODEL_RATES[model] || MODEL_RATES[DEFAULT_AI_MODEL];
   return (promptTokens * rates.input + completionTokens * rates.output) / 1_000_000;
 }
@@ -27,8 +29,6 @@ export function estimateNeurons(promptTokens, completionTokens, model = DEFAULT_
 export async function classifyBook(env, bookId, { force = false } = {}) {
   const book = await dbGet(env, 'SELECT * FROM books WHERE id = ?', bookId);
   if (!book) throw new Error('书籍不存在');
-  if (!env.AI) throw new Error('未配置 Workers AI 绑定');
-
   const current = await dbGet(env, 'SELECT * FROM ai_classifications WHERE book_id = ?', bookId);
   if (!force && current?.status === 'completed') return { skipped: true, bookId };
   if (!force && Number(current?.attempts || 0) >= MAX_AI_ATTEMPTS) {
@@ -49,21 +49,30 @@ export async function classifyBook(env, bookId, { force = false } = {}) {
   );
 
   let usage = { prompt_tokens: 0, completion_tokens: 0 };
+  let model = env.AI_MODEL || DEFAULT_AI_MODEL;
   try {
     const source = await lookupBook(env, book);
     const prompt = buildPrompt(book, source);
-    const model = env.AI_MODEL || DEFAULT_AI_MODEL;
-    const response = await env.AI.run(model, {
-      messages: [
-        { role: 'system', content: '你是中文私人书库整理助手，只输出符合要求的 JSON，不要输出解释。' },
-        { role: 'user', content: prompt },
-      ],
-      max_tokens: 300,
-      temperature: 0.1,
-      top_p: 0.2,
-      top_k: 20,
-      response_format: { type: 'json_object' },
-    });
+    const nvidiaConfig = await dbGet(env, 'SELECT * FROM nvidia_ai_config WHERE id = 1');
+    let response;
+    if (nvidiaConfig) {
+      model = `nvidia:${nvidiaConfig.model}`;
+      const result = await runNvidia(env, nvidiaConfig, prompt);
+      response = result.response;
+    } else {
+      if (!env.AI) throw new Error('未配置 NVIDIA 模型或 Workers AI 绑定');
+      response = await env.AI.run(model, {
+        messages: [
+          { role: 'system', content: '你是中文私人书库整理助手，只输出符合要求的 JSON，不要输出解释。' },
+          { role: 'user', content: prompt },
+        ],
+        max_tokens: 300,
+        temperature: 0.1,
+        top_p: 0.2,
+        top_k: 20,
+        response_format: { type: 'json_object' },
+      });
+    }
     usage = normalizeUsage(response?.usage);
     const result = normalizeResult(responseText(response), book.title, book.author, source);
     await replaceTags(env, bookId, result.tags);
@@ -96,13 +105,49 @@ export async function classifyBook(env, bookId, { force = false } = {}) {
     );
     await saveUsage(env, {
       bookId,
-      model: env.AI_MODEL || DEFAULT_AI_MODEL,
+      model,
       usage,
       status: 'failed',
       error: message,
     });
     throw error;
   }
+}
+
+async function runNvidia(env, config, prompt) {
+  const keys = await decryptKeys(env, config.encrypted_keys);
+  if (!keys.length) throw new Error('NVIDIA 模型已配置但没有可用密钥');
+  const start = ((Number(config.next_key) || 0) % keys.length + keys.length) % keys.length;
+  const errors = [];
+  for (let attempt = 0; attempt < keys.length; attempt += 1) {
+    const index = (start + attempt) % keys.length;
+    try {
+      const response = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${keys[index]}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: config.model,
+          messages: [
+            { role: 'system', content: '你是中文私人书库整理助手，只输出符合要求的 JSON，不要输出解释。' },
+            { role: 'user', content: prompt },
+          ],
+          max_tokens: 300,
+          temperature: 0.1,
+          top_p: 0.2,
+        }),
+        signal: AbortSignal.timeout(45000),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(`NVIDIA API HTTP ${response.status}: ${String(data?.error?.message || data?.detail || '').slice(0, 180)}`);
+      await dbRun(env, 'UPDATE nvidia_ai_config SET next_key = ?, updated_at = ? WHERE id = 1', (start + 1) % keys.length, nowSec());
+      return { model: `nvidia:${config.model}`, response: data };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(message.replaceAll(keys[index], '[已隐藏]'));
+    }
+  }
+  await dbRun(env, 'UPDATE nvidia_ai_config SET next_key = ?, updated_at = ? WHERE id = 1', (start + 1) % keys.length, nowSec());
+  throw new Error(`NVIDIA 所有密钥请求失败：${errors.join('；')}`);
 }
 
 async function saveUsage(env, { bookId, model, usage, status, error = '' }) {
