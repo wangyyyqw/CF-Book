@@ -72,8 +72,9 @@ async function readEntry(file, entry) {
   if (header.length < 30) throw new Error('bad local header');
   const dv = new DataView(header.buffer, header.byteOffset, header.byteLength);
   if (dv.getUint32(0, true) !== 0x04034b50) throw new Error('bad local header');
-  const method = dv.getUint16(8, true);
-  const compSize = dv.getUint32(18, true);
+  const method = entry.method;
+  // ZIP data descriptor 模式下，local header 的大小字段为 0；中央目录才是准确值。
+  const compSize = entry.compSize;
   const nameLen = dv.getUint16(26, true);
   const extraLen = dv.getUint16(28, true);
   const dataStart = entry.localOffset + 30 + nameLen + extraLen;
@@ -164,6 +165,20 @@ export async function extractCoverFromMeta(meta) {
       if (found) coverName = found.name;
     }
 
+    // 部分微信读书 EPUB 没有 OPF cover 声明，只在 cover.xhtml 中放外链图片。
+    // 先尝试常见封面页，内部图片仍走本地 ZIP 提取，外链交给后端抓取以绕过 CORS。
+    if (!coverName) {
+      const coverPage = await findCoverPage(entries, file);
+      if (coverPage) {
+        const image = coverPage.html.match(/<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/i);
+        if (image?.[1]) {
+          const source = decodeXmlEntities(image[1].trim());
+          if (/^https?:\/\//i.test(source)) return { url: source };
+          coverName = resolvePath(coverPage.name, source);
+        }
+      }
+    }
+
     if (!coverName) return null;
     const normalized = coverName.replace(/^\.\//, '');
     // 封面 href 相对 OPF 所在目录；也兼容已带目录的写法
@@ -172,13 +187,40 @@ export async function extractCoverFromMeta(meta) {
     if (!entry) return null;
 
     const bytes = await readEntry(file, entry);
-    const mime = coverName.match(/\.(png|webp|jpe?g)$/i)
-      ? { png: 'image/png', webp: 'image/webp', jpg: 'image/jpeg', jpeg: 'image/jpeg' }[coverName.match(/\.(png|webp|jpe?g)$/i)[1].toLowerCase()]
+    const mime = coverName.match(/\.(png|webp|jpe?g|gif)$/i)
+      ? { png: 'image/png', webp: 'image/webp', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif' }[coverName.match(/\.(png|webp|jpe?g|gif)$/i)[1].toLowerCase()]
       : 'image/jpeg';
     return { bytes, mime };
   } catch (e) {
     return null;
   }
+}
+
+async function findCoverPage(entries, file) {
+  const pages = entries.filter((entry) => {
+    const name = entry.name.toLowerCase();
+    return /\.(xhtml|html|htm)$/.test(name) && /(^|\/)cover|(^|\/)front/.test(name);
+  });
+  for (const page of pages) {
+    const html = strFromU8(await readEntry(file, page));
+    if (/<img\b/i.test(html)) return { name: page.name, html };
+  }
+  return null;
+}
+
+function decodeXmlEntities(value) {
+  return value.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+}
+
+function resolvePath(pageName, href) {
+  const base = pageName.split('/');
+  base.pop();
+  for (const part of href.split('/')) {
+    if (!part || part === '.') continue;
+    if (part === '..') base.pop();
+    else base.push(part);
+  }
+  return base.join('/');
 }
 
 function escapeRe(s) {

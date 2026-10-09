@@ -49,7 +49,8 @@ async function uploadFile(file) {
     if (meta.isbn) log(`识别 ISBN：${meta.isbn}`);
     if (file.name.toLowerCase().endsWith('.epub')) {
       cover = await extractCoverFromFile(file, file.name);
-      if (cover) log(`识别到内嵌封面（${(cover.bytes.byteLength / 1024).toFixed(0)}KB）`);
+      if (cover?.bytes) log(`识别到内嵌封面（${(cover.bytes.byteLength / 1024).toFixed(0)}KB）`);
+      else if (cover?.url) log('识别到外链封面，入库时由服务端抓取');
     }
     log(`元数据提取耗时 ${((performance.now() - t0) / 1000).toFixed(1)}s`);
   } catch (e) {
@@ -131,6 +132,15 @@ async function uploadFile(file) {
   const result = await done.json();
   if (!done.ok || !result.ok) throw new Error(result.error || '完成入库失败');
   if (result.bookId && cover) {
+    if (cover.url) {
+      const fd = new FormData();
+      fd.append('sourceUrl', cover.url);
+      const coverRes = await api(`/api/books/${result.bookId}/cover`, { method: 'POST', body: fd });
+      if (coverRes.ok) log('外链封面已抓取并保存');
+      else log('外链封面抓取失败（不影响入库）');
+      log('入库完成，可在“下载”页找到该书');
+      return uploadId;
+    }
     let compressed = cover;
     try {
       compressed = await compressCover(cover.bytes, cover.mime);
