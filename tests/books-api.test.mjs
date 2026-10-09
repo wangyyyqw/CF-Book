@@ -45,20 +45,25 @@ test('默认返回全部书籍，并给出总数与是否还有下一页', async
   assert.equal(data.hasMore, false);
 });
 
-test('超过 100 本时不再静默截断，分页可取回全部', async () => {
+test('超过一页时不再静默截断，分页可取回全部', async () => {
   const env = makeEnv();
   for (let i = 1; i <= 130; i++) addBook(env.DB, { id: `b${i}`, title: `书${i}`, created: i });
 
   const first = await list(env);
-  assert.equal(first.books.length, 100, '默认每页 100 本');
+  assert.equal(first.books.length, 18, '默认每页 18 本');
   assert.equal(first.total, 130, '总数必须是全部匹配数，而不是本页条数');
   assert.equal(first.hasMore, true);
 
-  const second = await list(env, '?offset=100');
-  assert.equal(second.books.length, 30);
-  assert.equal(second.hasMore, false);
+  const pages = [first.books];
+  let offset = 18;
+  while (offset < 130) {
+    const page = await list(env, `?offset=${offset}`);
+    pages.push(page.books);
+    offset += page.books.length;
+    if (!page.hasMore) break;
+  }
 
-  const seen = new Set([...first.books, ...second.books].map((b) => b.id));
+  const seen = new Set(pages.flat().map((b) => b.id));
   assert.equal(seen.size, 130, '两页之间不应重复或遗漏');
 });
 
@@ -106,6 +111,22 @@ test('按标签筛选，总数同样跟随筛选', async () => {
   assert.deepEqual(data.books.map((b) => b.id), ['b1']);
   assert.equal(data.total, 1);
   assert.deepEqual(data.books[0].tags, '历史');
+});
+
+test('推荐接口最多返回九本，并按评分优先', async () => {
+  const env = makeEnv();
+  for (let i = 1; i <= 12; i++) addBook(env.DB, { id: `r${i}`, title: `推荐${i}`, created: i });
+  env.DB.exec(
+    `INSERT INTO book_user_state (book_id, user_id, rating, status, is_favorite, updated_at)
+     VALUES ('r4', 'u1', 9.5, 'read', 0, 1), ('r2', 'u1', 8, 'read', 0, 1);`
+  );
+
+  const data = await list(env, '?recommended=1&limit=50');
+  assert.equal(data.books.length, 9);
+  assert.equal(data.total, 9, '推荐集合总数最多为九本');
+  assert.equal(data.hasMore, false);
+  assert.equal(data.books[0].id, 'r4');
+  assert.equal(data.books[1].id, 'r2');
 });
 
 test('收藏与阅读状态按当前账号隔离，总数只看自己的状态', async () => {

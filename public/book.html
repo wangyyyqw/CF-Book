@@ -49,6 +49,8 @@
 
           <div class="actions-row">
             <button id="download">下载原文件</button>
+            <button id="edit-book" hidden>修改书籍</button>
+            <span id="download-msg" class="form-msg"></span>
           </div>
         </div>
       </section>
@@ -62,28 +64,6 @@
         </form>
       </section>
 
-      <section class="panel" id="admin-panel" hidden>
-        <h2>书籍信息（仅管理员可改）</h2>
-        <div class="book-fields">
-          <label>书名<input id="f-title" /></label>
-          <label>作者<input id="f-author" /></label>
-          <label>简介<textarea id="f-description" rows="3"></textarea></label>
-          <label>出版社<input id="f-publisher" /></label>
-          <label>ISBN<input id="f-isbn" /></label>
-          <label>语言<input id="f-language" /></label>
-          <label>格式<input id="f-format" /></label>
-          <label>封面 URL<input id="f-cover" placeholder="可选，留空使用占位" /></label>
-        </div>
-        <div class="actions-row">
-          <button id="save">保存</button>
-          <label class="btn-cover">
-            上传封面
-            <input id="cover-file" type="file" accept="image/*" hidden />
-          </label>
-          <button id="delete" class="danger">删除</button>
-          <span id="msg"></span>
-        </div>
-      </section>
     </main>
 
     <script type="module" src="/nav.js"></script>

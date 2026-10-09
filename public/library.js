@@ -6,8 +6,10 @@ const statusEl = $('status');
 const countEl = $('count');
 const moreEl = $('more');
 const themeToggle = $('theme-toggle');
+const tagFilterEl = $('tag-filter');
+const recommendEl = $('recommend-books');
 
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 18;
 const STATUS_LABEL = { unread: '未读', reading: '在读', read: '已读', favorite: '收藏' };
 const STATUS_CLASS = { unread: 's-unread', reading: 's-reading', read: 's-read', favorite: 's-fav' };
 
@@ -47,6 +49,26 @@ function cardHtml(b, index) {
     </a>`;
 }
 
+async function loadRecommendations() {
+  const res = await api('/api/books?recommended=1&limit=9');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) return;
+  recommendEl.innerHTML = data.books.map((book, index) => cardHtml(book, index)).join('');
+  if (!data.books.length) recommendEl.innerHTML = '<p class="empty">书库还没有推荐书籍。</p>';
+}
+
+async function loadTags() {
+  const res = await api('/api/tags');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) return;
+  for (const tag of data.tags || []) {
+    const option = document.createElement('option');
+    option.value = tag.name;
+    option.textContent = `${tag.name}（${tag.count}）`;
+    tagFilterEl.appendChild(option);
+  }
+}
+
 async function load({ reset = false } = {}) {
   if (reset) {
     offset = 0;
@@ -58,6 +80,7 @@ async function load({ reset = false } = {}) {
   const q = searchEl.value.trim();
   if (q) params.set('q', q);
   if (statusEl.value) params.set('status', statusEl.value);
+  if (tagFilterEl.value) params.set('tag', tagFilterEl.value);
   params.set('limit', String(PAGE_SIZE));
   params.set('offset', String(offset));
 
@@ -88,6 +111,7 @@ async function load({ reset = false } = {}) {
 
 searchEl.addEventListener('input', debounce(() => load({ reset: true }), 300));
 statusEl.addEventListener('change', () => load({ reset: true }));
+tagFilterEl.addEventListener('change', () => load({ reset: true }));
 moreEl.addEventListener('click', () => load());
 
 function debounce(fn, ms) {
@@ -99,6 +123,8 @@ function debounce(fn, ms) {
 }
 
 load({ reset: true });
+loadRecommendations();
+loadTags();
 
 themeToggle.addEventListener('click', () => {
   const dark = document.body.classList.toggle('library-dark');

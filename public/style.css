@@ -433,6 +433,47 @@ body.library-page {
   flex-wrap: wrap;
 }
 
+.recommend-section {
+  padding: 2rem 0 0.6rem;
+}
+
+.section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.section-heading h2 {
+  margin: 0.25rem 0 0;
+  font-size: clamp(1.45rem, 3vw, 2rem);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+}
+
+.section-note {
+  color: var(--muted);
+  font-size: 0.76rem;
+  letter-spacing: 0.1em;
+}
+
+.library-page .recommend-books {
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin-top: 0;
+}
+
+.recommend-books .bc-title,
+.recommend-books .bc-author {
+  font-size: 0.72rem;
+}
+
+.recommend-books .bc-status,
+.recommend-books .bc-overlay {
+  display: none;
+}
+
 .library-bar input[type="search"] {
   flex: 1;
   min-width: 220px;
@@ -471,14 +512,17 @@ body.library-page {
 
 @media (max-width: 1080px) {
   .books { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .library-page .recommend-books { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 }
 
 @media (max-width: 900px) {
   .books { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .library-page .recommend-books { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }
 
 @media (max-width: 700px) {
   .books { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.2rem 0.85rem; }
+  .library-page .recommend-books { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem 0.55rem; }
 }
 
 @media (max-width: 470px) {
@@ -670,6 +714,10 @@ body.library-page.library-dark {
 .library-dark .library-bar select option {
   background: #282724;
   color: #eee8dc;
+}
+
+.library-dark .library-intro {
+  color: #c8c0b3;
 }
 
 .more-btn:hover:not(:disabled) {

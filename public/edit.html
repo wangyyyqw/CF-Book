@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CF-Book · 修改书籍</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>CF-Book 书库</h1>
+      <nav><a href="/library">书库</a><a href="/">上传</a><a href="/download">下载</a></nav>
+      <div id="user-area" class="user-area"></div>
+    </header>
+    <main class="shell">
+      <section class="panel">
+        <p class="book-meta"><a id="back-book" href="#">返回详情</a></p>
+        <h2>修改书籍</h2>
+        <div class="book-fields">
+          <label>书名<input id="f-title" /></label>
+          <label>作者<input id="f-author" /></label>
+          <label>简介<textarea id="f-description" rows="3"></textarea></label>
+          <label>出版社<input id="f-publisher" /></label>
+          <label>ISBN<input id="f-isbn" /></label>
+          <label>语言<input id="f-language" /></label>
+          <label>格式<input id="f-format" /></label>
+          <label>标签分类<input id="f-tags" placeholder="用逗号分隔，如 历史, 文言文" /></label>
+        </div>
+        <div class="actions-row">
+          <button id="save">保存修改</button>
+          <label class="btn-cover">上传封面<input id="cover-file" type="file" accept="image/*" hidden /></label>
+          <button id="delete" class="danger">删除书籍</button>
+          <span id="msg" class="form-msg"></span>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/nav.js"></script>
+    <script type="module" src="/edit.js"></script>
+  </body>
+</html>

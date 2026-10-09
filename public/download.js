@@ -1,4 +1,5 @@
 import { api } from '/api.js';
+import { downloadBook } from '/download-core.js';
 const $ = (id) => document.getElementById(id);
 
 
@@ -36,61 +37,18 @@ async function loadTasks() {
     const btn = document.createElement('button');
     btn.textContent = status === 'completed' ? '下载' : `${done}/${u.total_chunks}`;
     btn.disabled = status !== 'completed';
-    btn.addEventListener('click', () => downloadBook(u.upload_id, u.filename));
+    btn.addEventListener('click', () => {
+      btn.disabled = true;
+      setProgress(0);
+      downloadBook(u.upload_id, u.filename, {
+        onProgress: setProgress,
+        onMessage: log,
+      }).catch((error) => log(`下载失败: ${error.message}`))
+        .finally(() => { btn.disabled = false; });
+    });
     tr.append(cell, Object.assign(document.createElement('td'), { textContent: fmtSize(u.total_size) }), Object.assign(document.createElement('td'), { textContent: `${u.total_chunks}` }), Object.assign(document.createElement('td'), { textContent: status }), (() => { const d = document.createElement('td'); d.appendChild(btn); return d; })());
     tbody.appendChild(tr);
   }
-}
-
-async function downloadBook(uploadId, filename) {
-  const metaRes = await api(`/api/download/${uploadId}`);
-  const meta = await metaRes.json();
-  if (!metaRes.ok || !meta.ok) {
-    log(`获取书籍信息失败: ${meta.error || metaRes.status}`);
-    return;
-  }
-
-  // 并发下载分块（按 index 顺序填入数组，避免乱序）
-  const parts = new Array(meta.chunks.length);
-  const DOWNLOAD_CONCURRENCY = 3;
-  let done = 0;
-  const getChunk = async (c) => {
-    const res = await api(`/api/download/${uploadId}/chunk/${c.index}`);
-    if (!res.ok) {
-      throw new Error(`分块 ${c.index + 1} 下载失败: ${res.status}`);
-    }
-    const bytes = await res.arrayBuffer();
-    const digest = await crypto.subtle.digest('SHA-256', bytes);
-    const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
-    if (hex !== c.sha256) {
-      throw new Error(`分块 ${c.index + 1} 哈希校验失败`);
-    }
-    parts[c.index] = bytes;
-    done++;
-    setProgress((done / meta.chunks.length) * 100);
-  };
-  let next = 0;
-  const worker = async () => {
-    while (true) {
-      const i = next++;
-      if (i >= meta.chunks.length) return;
-      await getChunk(meta.chunks[i]);
-    }
-  };
-  try {
-    await Promise.all(Array.from({ length: Math.min(DOWNLOAD_CONCURRENCY, meta.chunks.length) }, worker));
-  } catch (e) {
-    log(e.message);
-    return;
-  }
-
-  const blob = new Blob(parts, { type: 'application/octet-stream' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(a.href);
-  log('下载完成，浏览器已保存合并后的文件');
 }
 
 function setProgress(pct) {

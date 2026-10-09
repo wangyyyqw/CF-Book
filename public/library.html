@@ -32,6 +32,16 @@
         </div>
         <p class="library-intro">一架旧书，半窗灯火。这里停着读过的、想读的，与舍不得读完的。</p>
       </section>
+      <section class="recommend-section" aria-labelledby="recommend-title">
+        <div class="section-heading">
+          <div>
+            <p class="library-eyebrow">今日翻阅</p>
+            <h2 id="recommend-title">值得一看的书</h2>
+          </div>
+          <span class="section-note">精选 9 本</span>
+        </div>
+        <div id="recommend-books" class="books recommend-books"></div>
+      </section>
       <section class="library-bar">
         <input id="search" type="search" placeholder="搜索书名 / 作者 / 简介" />
         <select id="status">
@@ -40,6 +50,9 @@
           <option value="reading">在读</option>
           <option value="read">已读</option>
           <option value="favorite">收藏</option>
+        </select>
+        <select id="tag-filter" aria-label="标签分类">
+          <option value="">全部标签</option>
         </select>
       </section>
       <div id="books" class="books"></div>

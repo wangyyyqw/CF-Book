@@ -1,10 +1,9 @@
 import { api, loadMe, escapeHtml } from '/api.js';
+import { downloadBook } from '/download-core.js';
 
 const $ = (id) => document.getElementById(id);
 const id = new URLSearchParams(location.search).get('id');
 
-// 仅管理员可编辑的书籍信息字段
-const FIELDS = ['title', 'author', 'description', 'publisher', 'isbn', 'language', 'format', 'cover'];
 const STATUS_LABEL = { unread: '未读', reading: '在读', read: '已读' };
 
 let me = null;
@@ -59,11 +58,11 @@ async function load() {
   $('f-status').value = b.my_status || 'unread';
   $('f-favorite').checked = Boolean(b.my_favorite);
   $('f-tags').value = (b.tags || []).join(', ');
-  for (const f of FIELDS) $(`f-${f}`).value = b[f] || '';
-
   renderRatings(b);
   renderCover(b.cover || '');
   $('download').dataset.uploadId = b.upload_id || '';
+  $('download').dataset.filename = b.file_name || b.title || 'download';
+  if (me?.role === 'admin') $('edit-book').hidden = false;
 }
 
 $('save-state').addEventListener('click', async () => {
@@ -93,61 +92,29 @@ $('tags-form').addEventListener('submit', async (event) => {
   $('tags-msg').textContent = res.ok && data.ok ? '✓ 标签已保存' : `保存失败：${data.error || res.status}`;
 });
 
-// —— 以下仅管理员 ——
-
-$('save').addEventListener('click', async () => {
-  const body = {};
-  for (const f of FIELDS) body[f] = $(`f-${f}`).value;
-  const res = await api(`/api/books/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  $('msg').textContent = res.ok && data.ok ? '✓ 已保存' : `保存失败：${data.error || res.status}`;
-  if (res.ok && data.ok) {
-    renderCover(body.cover);
-    await load();
-  }
-});
-
-$('delete').addEventListener('click', async () => {
-  if (!confirm('删除后书籍档案与分块记录将移除，确定吗？')) return;
-  const res = await api(`/api/books/${id}`, { method: 'DELETE' });
-  const data = await res.json().catch(() => ({}));
-  if (res.ok && data.ok) location.href = '/library';
-  else $('msg').textContent = `删除失败：${data.error || res.status}`;
-});
-
-$('cover-file').addEventListener('change', async () => {
-  const file = $('cover-file').files[0];
-  if (!file) return;
-  const fd = new FormData();
-  fd.append('file', file, file.name);
-  const res = await api(`/api/books/${id}/cover`, { method: 'POST', body: fd });
-  const data = await res.json().catch(() => ({}));
-  if (res.ok && data.ok) {
-    $('msg').textContent = '✓ 封面已更新';
-    renderCover(data.cover);
-    $('f-cover').value = data.cover;
-  } else {
-    $('msg').textContent = `封面上传失败：${data.error || res.status}`;
-  }
-});
-
 $('download').addEventListener('click', () => {
   const uploadId = $('download').dataset.uploadId;
   if (!uploadId) {
     $('state-msg').textContent = '该书暂无源文件';
     return;
   }
-  location.href = `/download?focus=${encodeURIComponent(uploadId)}`;
+  $('download').disabled = true;
+  $('download-msg').textContent = '正在下载并合并分块…';
+  downloadBook(uploadId, $('download').dataset.filename, {
+    onMessage: (text) => { $('download-msg').textContent = text; },
+  }).catch((error) => {
+    $('download-msg').textContent = `下载失败：${error.message}`;
+  }).finally(() => { $('download').disabled = false; });
+});
+
+$('edit-book').addEventListener('click', () => {
+  location.href = `/edit?id=${encodeURIComponent(id)}`;
 });
 
 async function init() {
   const data = await loadMe();
   me = data?.user || null;
-  if (me?.role === 'admin') $('admin-panel').hidden = false;
+  if (me?.role === 'admin') $('edit-book').hidden = false;
   await load();
 }
 
