@@ -15,7 +15,7 @@ const MODEL_RATES = {
 export const BOOK_TAGS = [
   '文学', '小说', '科幻', '奇幻', '悬疑', '推理', '历史', '传记', '哲学', '心理学',
   '经济', '管理', '计算机', '医学', '教育', '艺术', '诗歌', '散文', '漫画', '儿童',
-  '教材', '工具书', '语言学习', '其他',
+  '教材', '工具书', '语言学习', '武侠', '其他',
 ];
 
 export function dailyLimit(env) {
@@ -184,7 +184,7 @@ export function normalizeResult(text, fallbackTitle = '', author = '', source = 
   const title = isPlausibleTitle(candidateTitle, fallbackTitle, author)
     ? cleanTitleFallback(candidateTitle)
     : cleanTitleFallback(fallbackTitle);
-  const inferredTags = inferTags(fallbackTitle, source);
+  const inferredTags = inferTags(fallbackTitle, source, author);
   const aiTags = Array.isArray(data.tags)
     ? data.tags.map((tag) => String(tag).trim()).filter((tag) => BOOK_TAGS.includes(tag))
     : [];
@@ -232,9 +232,10 @@ function parseJsonObject(value) {
   throw new Error('AI 返回的 JSON 无法解析');
 }
 
-function inferTags(title, source) {
-  const values = [title, ...(source?.subjects || [])].join(' ').toLowerCase();
+function inferTags(title, source, author = '') {
+  const values = [title, author, ...(source?.subjects || [])].join(' ').toLowerCase();
   const rules = [
+    [['金庸', '古龙', '梁羽生', '武侠', 'wuxia', 'martial arts'], '武侠'],
     [['科幻', 'science fiction', 'sci-fi'], '科幻'],
     [['奇幻', 'fantasy', '魔法', 'wizard', '哈利·波特', '诡秘'], '奇幻'],
     [['悬疑', 'thriller', 'mystery'], '悬疑'],

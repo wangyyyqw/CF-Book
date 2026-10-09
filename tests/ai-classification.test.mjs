@@ -68,3 +68,13 @@ test('分类兼容思考文本包裹的 JSON 和公开书目标签', () => {
   assert.equal(result.title, '银河英雄传说');
   assert.deepEqual(result.tags, ['科幻', '其他', '小说']);
 });
+
+test('金庸作品优先加入武侠标签', () => {
+  const result = normalizeResult(
+    JSON.stringify({ title: '示例书籍H', tags: ['文学', '历史', '其他'] }),
+    '示例书籍H',
+    '金庸',
+    { subjects: ['fiction'] },
+  );
+  assert.deepEqual(result.tags, ['武侠', '文学', '历史']);
+});
