@@ -127,7 +127,7 @@ test('不合法标签 ID 不会先创建空标签书籍', async () => {
   assert.equal(count.count, 0);
 });
 
-test('推荐接口从全部书籍随机返回最多三本', async () => {
+test('推荐接口按请求数量从全部书籍随机返回', async () => {
   const env = makeEnv();
   for (let i = 1; i <= 12; i++) addBook(env.DB, { id: `r${i}`, title: `推荐${i}`, created: i });
   env.DB.exec(
@@ -135,11 +135,10 @@ test('推荐接口从全部书籍随机返回最多三本', async () => {
      VALUES ('r4', 'u1', 9.5, 'read', 0, 1), ('r2', 'u1', 8, 'read', 0, 1);`
   );
 
-  const data = await list(env, '?recommended=1&limit=50');
-  assert.equal(data.books.length, 3);
-  assert.equal(data.total, 3, '推荐集合固定最多三本');
-  assert.equal(data.hasMore, false);
-  assert.equal(new Set(data.books.map((book) => book.id)).size, 3);
+  const data = await list(env, '?recommended=1&limit=5');
+  assert.equal(data.books.length, 5);
+  assert.equal(data.total, 12, '总数反映整个馆藏');
+  assert.equal(new Set(data.books.map((book) => book.id)).size, 5);
   assert.ok(data.books.every((book) => /^r(?:[1-9]|1[0-2])$/.test(book.id)));
 });
 

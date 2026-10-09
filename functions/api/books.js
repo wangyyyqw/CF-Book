@@ -11,7 +11,7 @@ export async function onRequestGet(context) {
   const status = (url.searchParams.get('status') || '').trim();
   const recommended = url.searchParams.get('recommended') === '1';
   const requestedLimit = Number(url.searchParams.get('limit')) || (recommended ? 3 : 18);
-  const limit = Math.min(requestedLimit, recommended ? 3 : 100);
+  const limit = Math.min(requestedLimit, 100);
   const offset = Math.max(Number(url.searchParams.get('offset')) || 0, 0);
 
   // my_* 是当前账号自己的评分/状态，rating_avg 是所有人打分的平均值
@@ -40,7 +40,7 @@ export async function onRequestGet(context) {
 
   // 总数与列表用同一套筛选条件，避免「共 N 本」与实际可翻页数量不一致
   const matchedTotal = (await dbGet(env, `SELECT COUNT(*) AS n ${from}${whereSql}`, user.id, ...filters)).n;
-  const total = recommended ? Math.min(matchedTotal, 3) : matchedTotal;
+  const total = matchedTotal;
 
   const books = await dbAll(
     env,

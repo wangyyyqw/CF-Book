@@ -104,6 +104,7 @@ async function load() {
   $('download').dataset.filename = b.file_name || b.title || 'download';
   if (me?.role === 'admin') {
     $('edit-book').hidden = false;
+    $('ai-classify-book').hidden = false;
     $('ai-classify-panel').hidden = false;
   }
 }

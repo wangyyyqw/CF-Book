@@ -15,9 +15,12 @@ loadMe().then((data) => {
   area.innerHTML = `
     ${isAdmin ? '<a class="user-link" href="/users">账号管理</a>' : ''}
     <span class="user-name">${name}</span>
-    <button id="user-logout" class="user-logout" type="button">退出</button>`;
+    <button id="user-logout" class="user-logout" type="button">退出登录</button>`;
   document.getElementById('user-logout').addEventListener('click', async () => {
     await api('/api/auth/logout', { method: 'POST' });
     location.href = '/login';
+  });
+  document.querySelector('.library-menu-list')?.addEventListener('click', (event) => {
+    if (event.target.closest('a')) area.closest('.library-menu')?.removeAttribute('open');
   });
 });

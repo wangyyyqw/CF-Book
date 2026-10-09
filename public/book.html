@@ -8,7 +8,7 @@
   </head>
   <body>
     <header class="topbar">
-      <h1>CF-Book 书库</h1>
+      <h1>CF-Book</h1>
       <nav>
         <a href="/library">书库</a>
         <a href="/">上传</a>
@@ -26,6 +26,11 @@
         <div class="book-fields">
           <h2 id="book-title">加载中…</h2>
           <p class="book-meta" id="book-meta"></p>
+
+          <div class="book-tag-summary">
+            <p class="book-section-label">共享分类</p>
+            <div id="tag-groups" class="tag-groups"></div>
+          </div>
 
           <div class="state-row">
             <label>我的评分
@@ -56,17 +61,18 @@
         </div>
       </section>
 
-      <section class="panel">
-        <h2>标签（共享）</h2>
-        <div id="tag-groups" class="tag-groups"></div>
+      <section class="panel book-tag-editor">
+        <h2>整理共享标签</h2>
         <form id="tags-form" class="inline-form standard-tags-picker">
           <div id="standard-tag-selects"></div>
-          <button type="submit">保存标签</button>
+          <div class="tag-actions">
+            <button type="submit" class="button-primary">保存标签</button>
+            <button id="ai-classify-book" class="button-secondary" type="button" hidden>AI 生成标签</button>
+          </div>
           <span id="tags-msg" class="form-msg"></span>
+          <span id="ai-classify-msg" class="form-msg" aria-live="polite"></span>
         </form>
         <div id="ai-classify-panel" hidden>
-          <button id="ai-classify-book" type="button">AI 生成标签</button>
-          <span id="ai-classify-msg" class="form-msg" aria-live="polite"></span>
           <details id="ai-classify-debug" hidden>
             <summary>模型响应与密钥轮换详情</summary>
             <pre id="ai-classify-debug-content"></pre>
