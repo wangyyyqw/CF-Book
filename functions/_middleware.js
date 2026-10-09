@@ -19,7 +19,7 @@ export async function onRequest(context) {
   const isDocument = request.method === 'GET' && !path.startsWith('/api') && !isAsset;
   const needsPageAuth = isDocument && !PUBLIC_PAGES.has(path);
   const needsApiAuth =
-    path.startsWith('/api') && !path.startsWith('/api/covers/') && !PUBLIC_API.has(path);
+    path.startsWith('/api') && !isAsset && !path.startsWith('/api/covers/') && !PUBLIC_API.has(path);
 
   // 静态资源不查库，只在页面与受保护接口上解析登录态
   if (needsPageAuth || needsApiAuth) {
