@@ -42,6 +42,7 @@ export async function onRequestPost(context) {
   const { env, request } = context;
   const body = await request.json().catch(() => ({}));
   const limit = Math.min(Math.max(Number(body.limit) || 10, 1), 50);
+  const offset = Math.max(Number(body.offset) || 0, 0);
   const force = body.force === true;
   const start = Math.floor(Date.now() / 86400000) * 86400;
   if (await usedToday(env, start) >= dailyLimit(env)) return err('今日 AI 额度已用尽', 429);
@@ -50,10 +51,11 @@ export async function onRequestPost(context) {
     env,
     `SELECT b.id FROM books b LEFT JOIN ai_classifications a ON a.book_id=b.id
      WHERE ?=1 OR a.book_id IS NULL OR a.status = 'pending' OR (a.status = 'failed' AND a.attempts < ?)
-     ORDER BY b.created_at ASC LIMIT ?`,
+     ORDER BY b.created_at ASC LIMIT ? OFFSET ?`,
     force ? 1 : 0,
     MAX_AI_ATTEMPTS,
-    limit
+    limit,
+    offset
   );
   const results = [];
   for (const book of books) {

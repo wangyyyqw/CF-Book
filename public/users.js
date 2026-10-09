@@ -24,25 +24,37 @@ async function loadAiUsage() {
   $('ai-meter-fill').title = `${percent.toFixed(1)}%`;
 }
 
-async function classifyBatch() {
+async function classifyBatch({ force = false } = {}) {
   $('ai-classify').disabled = true;
-  $('ai-msg').textContent = '正在整理，每次最多处理 10 本…';
+  $('ai-reclassify-all').disabled = true;
+  $('ai-msg').textContent = force ? '正在重新分类全部书籍…' : '正在整理，每次最多处理 10 本…';
   try {
-    const res = await api('/api/ai/classify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ limit: 10 }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.ok) {
-      $('ai-msg').textContent = `整理失败：${data.error || res.status}`;
-      return;
+    let processed = 0;
+    let failed = 0;
+    let offset = 0;
+    while (true) {
+      const res = await api('/api/ai/classify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(force ? { limit: 10, offset, force: true } : { limit: 10 }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        $('ai-msg').textContent = `整理失败：${data.error || res.status}；此前已处理 ${processed} 本`;
+        await loadAiUsage();
+        return;
+      }
+      processed += data.processed;
+      failed += data.results.filter((result) => result.error).length;
+      $('ai-msg').textContent = `${force ? '重新分类' : '整理'}中：已处理 ${processed} 本${failed ? `，失败 ${failed} 本` : ''}`;
+      await loadAiUsage();
+      if (!force || data.processed < 10) break;
+      offset += data.processed;
     }
-    const failed = data.results.filter((result) => result.error).length;
-    $('ai-msg').textContent = `本批处理 ${data.processed} 本${failed ? `，失败 ${failed} 本` : ''}`;
-    await loadAiUsage();
+    $('ai-msg').textContent = `${force ? '重新分类' : '本批处理'}完成，共 ${processed} 本${failed ? `，失败 ${failed} 本` : ''}`;
   } finally {
     $('ai-classify').disabled = false;
+    $('ai-reclassify-all').disabled = false;
   }
 }
 
@@ -190,3 +202,8 @@ loadMe().then((data) => {
 });
 
 $('ai-classify').addEventListener('click', classifyBatch);
+$('ai-reclassify-all').addEventListener('click', () => {
+  if (confirm('将使用联网书目和 AI 重新处理全部书籍，更新书名和共享标签，并消耗今日 AI 额度。继续吗？')) {
+    classifyBatch({ force: true });
+  }
+});
