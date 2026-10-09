@@ -48,6 +48,59 @@ test('分类会使用公开书目检索、清理书名、写入三个共享标�
   }
 });
 
+test('分类以书名作者检索多来源并把短参考信息交给 AI', async () => {
+  const env = envWithBook();
+  env.BOOK_SEARCH_API_URL = 'https://search.example.test/books?q={query}';
+  env.BOOK_SEARCH_API_KEY = 'search-key';
+  let prompt = '';
+  env.AI = {
+    async run(_model, request) {
+      prompt = request.messages.find((message) => message.role === 'user').content;
+      return {
+        choices: [{ message: { content: JSON.stringify({ title: '银河英雄传说', tags: ['科幻', '小说', '太空歌剧'] }) } }],
+        usage: { prompt_tokens: 100, completion_tokens: 20 },
+      };
+    },
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const value = String(url);
+    if (value.startsWith('https://books.googleapis.com/')) {
+      return new Response(JSON.stringify({ items: [{ volumeInfo: {
+        title: '银河英雄传说', authors: ['田中芳树'], description: '银河帝国与自由行星同盟之间的史诗战争。', categories: ['Science Fiction'], publisher: '早川书房',
+      } }] }), { status: 200 });
+    }
+    if (value.startsWith('https://zh.wikipedia.org/')) {
+      return new Response(JSON.stringify({ query: { pages: { '1': {
+        title: '银河英雄传说', extract: '田中芳树创作的科幻小说。', categories: [{ title: 'Category:科幻小说' }],
+      } } } }), { status: 200 });
+    }
+    if (value.startsWith('https://openlibrary.org/')) {
+      return new Response(JSON.stringify({ docs: [{ title: '银河英雄传说', author_name: ['田中芳树'], subject: ['science fiction'] }] }), { status: 200 });
+    }
+    if (value.startsWith('https://book.douban.com/')) {
+      return new Response(JSON.stringify([{ title: '银河英雄传说', author_name: '田中芳树', year: '1982' }]), { status: 200 });
+    }
+    if (value.startsWith('https://search.example.test/')) {
+      return new Response(JSON.stringify({ results: [{ title: '银河英雄传说', author: '田中芳树', snippet: '科幻小说与太空歌剧。', keywords: ['科幻', '太空歌剧'] }] }), { status: 200 });
+    }
+    return new Response('{}', { status: 404 });
+  };
+  try {
+    const result = await classifyBook(env, 'b1');
+    assert.deepEqual(result.tags, ['科幻', '小说', '其他']);
+    assert.match(prompt, /Google Books/);
+    assert.match(prompt, /维基/);
+    assert.match(prompt, /豆瓣/);
+    assert.match(prompt, /搜索 API/);
+    assert.match(prompt, /短参考信息/);
+    assert.match(prompt, /银河英雄传说/);
+    assert.doesNotMatch(prompt, /book\.epub/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('AI 返回占位书名时保留原书名并执行安全清理', async () => {
   const env = envWithBook();
   env.AI = { async run() {
