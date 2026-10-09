@@ -1,7 +1,7 @@
 import { dbGet, dbRun, nowSec } from './db.js';
 import { replaceTags } from './tags.js';
 
-export const DEFAULT_AI_MODEL = '@cf/qwen/qwen3-30b-a3b-fp8';
+export const DEFAULT_AI_MODEL = '@cf/meta/llama-3.2-1b-instruct';
 export const DEFAULT_DAILY_LIMIT = 10000;
 
 const MODEL_RATES = {
