@@ -1,34 +1,38 @@
 # 项目状态
 
-- 项目支持 Cloudflare Pages、D1、R2 与 Telegram Bot 存储的私人书库，包含账号、书目管理、分块上传下载、标准标签和 AI 分类。
-- 标准标签库有 878 个标签、5 个维度；第三批增量迁移为 `migrations/0012_humanities_and_web_tags.sql`。
-- EPUB 封面提取支持 OPF 相对路径、编码路径及 `../` 归一化；本地全量测试 56 项通过。
+- 项目支持 Cloudflare Pages、D1、R2 与 Telegram Bot 存储的私人书库，包含账号、书目管理、分块上传下载、标准标签、AI 分类、自定义书架和标签库管理。
+- 标准标签库结构为 5 个维度；线上库当前 700 个标签、647 个从未使用。
+- EPUB 封面提取支持 OPF 相对路径、编码路径及 `../` 归一化；本地全量测试 120 项通过。
 - AI 支持 Workers AI、OpenAI-compatible 与 Anthropic Messages；密钥加密保存在服务端存储中，不写入仓库。
+- D1 备份含书目、账号、标签、评分、状态与 Telegram 分块索引；恢复只重建 D1，不触碰 Telegram 原文件。
 
 ## 一、架构健康度
 
-- 模块总数：上传、下载、书库、账号、书籍元数据、标签与 AI 分类 7 个主要模块。
-- 违规跨模块调用：本次未发现。
+- 模块总数：上传、下载、书库、书架、账号、书籍元数据、标准标签、标签库管理与 AI 分类 9 个主要模块。
+- 违规跨模块调用：本次未发现；书架与标准标签保持独立，权限判定集中在 `functions/utils/shelves.js` 与 `functions/utils/tag-admin.js`。
 
 ## 二、变更影响范围
 
-- 本次重写 `README.md`，补充 Cloudflare Pages、D1、R2、Telegram、Pages Secrets、首次管理员初始化、本地开发、AI 配置和故障排查流程；新增 `scripts/bootstrap-d1.mjs`，从结构快照和 `data/book_tag_library_v1.json` 生成新库初始化 SQL，不改变线上接口契约。
-- 初始化脚本已在本地 SQLite 验证可生成 5 个维度、878 个标准标签和 82 个别名；README 明确区分新建空库初始化与已有库按迁移状态升级，避免重复执行历史迁移。
-- 标准标签、AI Provider 与 EPUB 封面处理；相关 D1 迁移位于 `migrations/`。
-- 部署者须按自己的 Cloudflare 资源配置 `wrangler.toml` 和 Secrets；仓库不携带生产资源标识。
-- 书库 UI 已调整：导航操作收进右侧菜单；推荐区按响应式列数动态抽取并铺满一行；馆藏改为按响应式列数的四行分页，使用上一页/下一页；详情页共享标签移到评分上方，保存标签与 AI 生成标签统一为同一操作区。书库 API 推荐数量改为按请求值返回。
-- 本次全页面统一 UI 变更已提交为 `5924ca7` 并推送到 `origin/main`，随后部署到 Cloudflare Pages，部署预览为 `054a3127.cf-book.pages.dev`。部署使用一次性本地 Wrangler 配置，生产资源标识未写回仓库；线上受保护页面未登录时均按预期进入登录页。
-- 书库导航与推荐区交互已提交为 `407f966` 并推送到 `origin/main`，部署预览为 `92b79b1f.cf-book.pages.dev`：菜单提升层级并支持点击外部收起，推荐区支持换一批，品牌、馆藏和推荐文字完成视觉调整。
-- 分块上传非 JSON 响应修复已提交为 `79672af` 并推送到 `origin/main`，部署预览为 `b96d5a7e.cf-book.pages.dev`：前端识别网关 HTML、对网络/5xx/429 自动重试 3 次，服务端 API 异常统一返回 JSON，并记录 Telegram 分块失败状态。生产库中金庸作品集仍保留 17/49 个已上传分块，未删除任何数据。
-- 断点续传与标签筛选已提交为 `ef706a0`，完整标准标签手动选择修复提交为 `df6612c`，均已推送到 `origin/main`；最新部署预览为 `5eebf248.cf-book.pages.dev`。上传初始化会按账号、文件名、大小和 SHA-256 复用 active/aborted 未完成任务并跳过已上传分块；书库标签筛选只显示有书使用的标签并提供“无标签”，详情和编辑页显式加载完整标准标签库。
+- 本会话完成 7 项功能，逐项提交并推送 `origin/main`，每项完成后部署到 Cloudflare Pages：
+  - `5d491ea` 下载改为流式写入（File System Access API → OPFS → Blob 回退）并升级下载中心（队列、并发数、暂停/继续、重试、速度、剩余时间、关闭提醒、历史）。
+  - `783250d` 上传任务中心：任务列表、暂停/继续、取消单本、失败分块重试、已上传/剩余/速度、IndexedDB 刷新恢复、长期失效任务清理、上传后自动校验 Telegram 分块。
+  - `8c799a9` 批量导入报告：成功/失败/缺少封面/元数据不完整计数与筛选。
+  - `de3bb53`、`8f4cae0` D1 自动备份与恢复：加密导出、cron Worker 定时导出、恢复前预览数据量、只恢复数据库。
+  - `d81bd0f` 自定义书架：`shelves` / `shelf_books` 表与迁移 `0014`，共享/个人书架、书库书架筛选、详情页加入书架。
+  - `6731c9b` 标签库管理页：新增/停用/编辑/合并/删除标签、别名、使用数量、导入导出 JSON、只看从未使用。
+- 新增文件：`public/{format,download-stream,download-core,download-queue,upload-store,upload-manager,import-report,tags}.js`、`public/tags.html`、`functions/utils/{concurrency,backup,shelves,tag-admin}.js`、`functions/api/backup/*`、`functions/api/upload/{cleanup.js,[uploadId]/verify.js}`、`functions/api/shelves*`、`functions/api/tags/admin*`、`workers/backup-cron/*`、迁移 `0013`、`0014`。
+- 接口契约新增：`/api/backup/{export,preview,restore}`、`/api/upload/cleanup`、`/api/upload/:id/verify`、`/api/shelves*`、`/api/tags/admin*`；`/api/books` 增加 `shelf` 筛选参数，`/api/books/:id` 增加 `shelf_ids` 字段。既有接口语义未改变。
+- 迁移状态：线上已执行到 `0014_shelves.sql`；`schema.sql` 已同步 `shelves` / `shelf_books`。
 
 ## 三、已知风险
 
-- 公开书目匹配与 AI 标签可能不准确，需人工复核。
-- 自定义 AI 服务商的费用、速率和兼容性由服务商决定。
-- 大文件浏览器端合并仍占用内存，断点续传仍有改进空间。
+- 公开书目匹配与 AI 标签可能不准确，需人工复核；标签合并/删除是管理员操作，误操作会改变已分类书籍，页面已加二次确认。
+- 备份恢复是整表覆盖式写入，恢复到旧快照会丢失之后的改动；备份文件依赖 `BACKUP_KEY`，密钥丢失则无法解密。
+- OPFS 与文件系统访问 API 依赖浏览器能力，Safari/移动端会回退到 Blob 合并，超大文件仍受内存限制。
+- 上传任务状态存于浏览器 IndexedDB，清理浏览器数据会丢失任务记录（服务端未完成分块仍在）。
 
 ## 四、下次最该做的事
 
-- 按部署者自己的 Cloudflare 账号初始化 D1、配置 Secrets 并执行迁移后部署。
-- 为大文件引入后台队列和流式下载/合并方案。
+- 为备份增加恢复演练记录与定期校验（例如每月抽样解密一次备份）。
+- 观察 OPFS/文件系统写入在移动端的实际表现，必要时为大文件下载补充后台任务。
+- 按需清理线上 647 个从未使用的标准标签，或先用“合并重复标签”收敛。
