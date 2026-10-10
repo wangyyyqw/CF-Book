@@ -53,7 +53,13 @@ export const uiUploadTasks = ['completed', 'failed', 'paused'].map((status, inde
 }));
 
 export function uiApiResponse(path, query, pagePath) {
-  if (path === '/api/auth/me') return { ok: true, user: pagePath.startsWith('/login') ? null : uiUser, needsSetup: false };
+  if (path === '/api/auth/me') return {
+    ok: true,
+    user: pagePath.startsWith('/login') ? null : uiUser,
+    needsSetup: false,
+    multiUser: true,
+    userCount: pagePath.startsWith('/login') ? undefined : 2,
+  };
   if (path === '/api/books') {
     const limit = Number(query.get('limit')) || 18;
     const offset = Number(query.get('offset')) || 0;
@@ -61,7 +67,19 @@ export function uiApiResponse(path, query, pagePath) {
     return { ok: true, books: rows.slice(offset, offset + limit), total: rows.length, hasMore: offset + limit < rows.length };
   }
   if (/^\/api\/books\/[^/]+$/.test(path)) return {
-    ok: true, book: { ...uiBooks[1], title: 'long_unbroken_book_title_'.repeat(10), author: 'author_'.repeat(12) },
+    ok: true, book: {
+      ...uiBooks[1],
+      title: 'long_unbroken_book_title_'.repeat(10),
+      author: 'author_'.repeat(12),
+      my_comment: '这是我的阅读笔记，用于验收评论文本域与展示布局。'.repeat(2),
+      ratings: [
+        { user_id: uiUser.id, username: uiUser.username, display_name: uiUser.display_name,
+          rating: 8.5, status: 'reading', is_favorite: 1, comment: '很值得一读的书，细节丰富。' },
+        { user_id: 'ui-member', username: 'member', display_name: '家庭成员',
+          rating: 7, status: 'read', is_favorite: 0, comment: 'comment_without_breaks_'.repeat(6) },
+      ],
+      rating_avg: 7.8, rating_count: 2,
+    },
   };
   if (path === '/api/tags/admin') return { ok: true, dimensions: uiDimensions, tags: uiTags };
   if (path === '/api/tags') return {
@@ -91,6 +109,16 @@ export function uiApiResponse(path, query, pagePath) {
   if (path === '/api/backup/preview') return {
     ok: true, createdAt: 1791580000, total: 60,
     summary: { books: { incoming: 36, current: 36 }, chunks: { incoming: 24, current: 24 } },
+  };
+  if (path === '/api/library/stats') return {
+    ok: true,
+    totals: { books: 36, size: 19327352832 },
+    formats: [{ name: 'epub', count: 30, size: 16106127360 }, { name: '', count: 6, size: 3221225472 }],
+    languages: [{ name: '中文', count: 30, size: 16106127360 }, { name: '', count: 6, size: 3221225472 }],
+    tags: uiTags.filter((tag) => tag.status === 'active').map((tag, index) => ({
+      tag_id: tag.tag_id, name: tag.name, dimension: tag.dimension,
+      count: (index % 4) + 1, size: ((index % 4) + 1) * 536870912,
+    })),
   };
   return { ok: true };
 }
