@@ -9,6 +9,9 @@ export const DEFAULT_AI_MODEL = '@cf/meta/llama-3.2-3b-instruct';
 export const DEFAULT_DAILY_LIMIT = 10000;
 export const MAX_AI_ATTEMPTS = 2;
 
+// 用户提供的书名清洗提示词：只提取主书名，删除营销文案、作者/出版社/榜单/括号内容等。
+const TITLE_CLEAN_PROMPT = `你是一个专业的“书名清洗助手”。你的任务是从用户提供的文本中，只提取并清洗出主书名。要求：1. 只输出清洗后的书名，不要解释、不要引号、不要书名号、不要多余标点或换行。2. 删除所有营销文案、作者介绍、译者信息、出版社、榜单、销量、推荐语、奖项、影视信息、系列名、版本说明、套装信息等。3. 删除所有括号及其内容，包括：() （） [] 【】。括号内即使出现《书名》，也视为宣传或说明，不提取。4. 优先识别文本开头到第一个左括号之前的内容为主书名；如果开头是《书名》，取最外层《》内的文字。5. 去掉“书名：”“作者：”“著”“译”“出版”“系列”“全新力作”“畅销榜”“第一名”等非书名词。6. 保留书名中必要的数字、英文、空格、间隔号、冒号等，但最终不要保留书名号。7. 如果无法识别书名，只输出：未识别到书名。示例：输入：挽救计划(《火星救援》作者安迪·威尔全新力作,出版后连续16周雄踞亚马逊科幻畅销榜第一名!科技宅男+跨星系好友联袂上演太空大救援,硬核工程风+幽默碎碎念打造年度科幻.) (译林幻系列)输出：挽救计划输入：《沙丘》（电影纪念版）(科幻经典)输出：沙丘输入：三体（刘慈欣著，地球往事三部曲）输出：三体待清洗文本：{{在这里粘贴要处理的文本}}`;
+
 const MODEL_RATES = {
   '@cf/qwen/qwen3-30b-a3b-fp8': { input: 4625, output: 30475 },
   '@cf/meta/llama-3.2-1b-instruct': { input: 2457, output: 18252 },
@@ -24,6 +27,71 @@ export function estimateNeurons(promptTokens, completionTokens, model = DEFAULT_
   if (model.includes(':')) return 0;
   const rates = MODEL_RATES[model] || MODEL_RATES[DEFAULT_AI_MODEL];
   return (promptTokens * rates.input + completionTokens * rates.output) / 1_000_000;
+}
+
+// AI 书名清洗：复用同一套自定义 Provider / Workers AI 配置，只更新 D1 书名，
+// 不触碰 Telegram 分块与 R2 封面。识别失败或异常时保留原书名。
+export async function cleanBookTitle(env, bookId) {
+  const book = await dbGet(env, 'SELECT * FROM books WHERE id = ?', bookId);
+  if (!book) throw new Error('书籍不存在');
+  const originalTitle = String(book.title || book.file_name || '')
+    .replace(/\.[^.]+$/, '').trim() || '未命名';
+  const prompt = TITLE_CLEAN_PROMPT.replace('{{在这里粘贴要处理的文本}}', originalTitle);
+  let usage = { prompt_tokens: 0, completion_tokens: 0 };
+  let model = env.AI_MODEL || DEFAULT_AI_MODEL;
+  let apiKey = '';
+  try {
+    const providerConfig = await dbGet(env, 'SELECT * FROM ai_provider_config WHERE id = 1');
+    let text = '';
+    if (providerConfig) {
+      model = `${providerConfig.format}:${providerConfig.model}`;
+      apiKey = await decryptApiKey(env, providerConfig.encrypted_key);
+      const provider = createConfiguredProvider(providerConfig, apiKey);
+      const result = await generateText({
+        model: provider(providerConfig.model),
+        prompt,
+        maxOutputTokens: 256,
+        maxRetries: 0,
+        abortSignal: AbortSignal.timeout(30000),
+      });
+      text = result.text || result.reasoningText || '';
+      usage = normalizeUsage({ prompt_tokens: result.usage.inputTokens, completion_tokens: result.usage.outputTokens });
+    } else {
+      if (!env.AI) throw new Error('未配置自定义 AI 接口或 Workers AI 绑定');
+      const response = await env.AI.run(model, {
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 128,
+        temperature: 0.1,
+      });
+      text = responseText(response);
+      usage = normalizeUsage(response?.usage);
+    }
+    const cleanedTitle = normalizeCleanedTitle(text);
+    if (!cleanedTitle) throw new Error('AI 未能识别书名');
+    await dbRun(env, 'UPDATE books SET title=?, updated_at=? WHERE id=?', cleanedTitle, nowSec(), bookId);
+    await saveUsage(env, { bookId, model, usage, status: 'completed' });
+    return { bookId, originalTitle, title: cleanedTitle, usage };
+  } catch (error) {
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    const message = apiKey ? rawMessage.replaceAll(apiKey, '[已隐藏]') : rawMessage;
+    await saveUsage(env, { bookId, model, usage, status: 'failed', error: message });
+    if (error instanceof Error) error.message = message;
+    throw error;
+  }
+}
+
+export function normalizeCleanedTitle(text) {
+  const value = String(text || '')
+    .replace(/^```[^\n]*\n?|\n?```$/g, '')
+    .replace(/^\s*(?:输出|书名)[:：]\s*/, '')
+    // 规则 3 的兜底：删除全部括号及其内容，括号内内容一律视为宣传或说明。
+    .replace(/[（(【\[]+[^）)】\]]*[）)】\]]+/g, '')
+    .replace(/[（(【\[]+[^）)】\]]*$/g, '')
+    .replace(/^["'《》\s]+|["'《》\s]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!value || value === '未识别到书名' || value.length > 200) return null;
+  return value;
 }
 
 export async function classifyBook(env, bookId, { force = false, includeDebug = false } = {}) {

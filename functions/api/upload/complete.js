@@ -1,6 +1,6 @@
 import { json, err } from '../../utils/http.js';
 import { dbGet, dbAll, dbRun, nowSec } from '../../utils/db.js';
-import { classifyBook } from '../../utils/ai-classification.js';
+import { classifyBook, cleanBookTitle } from '../../utils/ai-classification.js';
 
 function cleanBase(name) {
   const base = String(name || '').replace(/\.[^.]+$/, '');
@@ -81,9 +81,12 @@ export async function onRequestPost(context) {
     bookId = existing.id;
   }
 
-  // 不阻塞上传响应；生产 Pages 会在后台完成联网书目检索和 AI 分类。
+  // 不阻塞上传响应；生产 Pages 会在后台先清洗书名，再基于清洗后的书名做联网检索与 AI 分类。
   if (!existing && env.AI && typeof context.waitUntil === 'function') {
-    context.waitUntil(classifyBook(env, bookId).catch(() => {}));
+    context.waitUntil((async () => {
+      await cleanBookTitle(env, bookId).catch(() => {});
+      await classifyBook(env, bookId).catch(() => {});
+    })());
   }
 
   return json({
