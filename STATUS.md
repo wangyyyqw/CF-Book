@@ -9,16 +9,26 @@
 - 本次新增现有图书批量书名清洗，全量测试 152 项通过；只更新 D1 书名与清洗标记，不触碰 Telegram 分块索引与 R2 封面。随后修复推理型模型输出被截断导致的清洗失败，并增加上游抖动退避重跑、修复分批跳书，全量测试 160 项通过。
 - AI 支持 Workers AI、OpenAI-compatible 与 Anthropic Messages；密钥加密保存在服务端存储中，不写入仓库。
 - D1 备份含书目、账号、标签、评分、状态与 Telegram 分块索引；恢复只重建 D1，不触碰 Telegram 原文件。
+- 本次（2026-10-11）新增 7 项优化中剩余 4 项并逐项推送 `origin/main`：登录失败限流（`cf60c6b`）、按内容哈希提示疑似重复（`79ef6fd`）此前已完成；本次完成书库多字段排序（`c6fe219`）、书库统计面板（`fe19bb2`）、个人评论/笔记（`9688e78`）、单人默认隐藏多人视图（`8bd1e9f`），并补响应式验收数据（`f0786dc`）。全量测试 189 项通过，Playwright 响应式验收 460/460 通过。
 
 ## 一、架构健康度
 
 - 模块总数：上传、下载、书库、书架、账号、书籍元数据、标准标签、标签库管理与 AI 分类 9 个主要模块。
 - 违规跨模块调用：本次未发现；书架与标准标签保持独立，权限判定集中在 `functions/utils/shelves.js` 与 `functions/utils/tag-admin.js`。
+- 本次新增只读聚合接口 `functions/api/library/stats.js`（归入书库模块），复用 `requireAdmin` 与 `formatBytes`，不新增生产依赖；个人评论沿用 `book_user_state`，经 `normalizeComment` 收口，新增迁移 `0018`。
 - 本次在既有书库、书架和标准标签模块之间增加读取聚合与短期缓存，沿用现有鉴权、样式和导航，不新增生产依赖或数据库迁移。
 - 本次在 AI 分类模块内新增书名清洗能力，沿用同一套自定义 Provider / Workers AI 配置，不新增生产依赖或数据库迁移。
 - 本次新增现有图书批量清洗接口与管理页入口，沿用同一套 AI 配置，不新增生产依赖；新增迁移 `0015_title_clean.sql`。
 
 ## 二、变更影响范围
+
+- 本次（2026-10-11）增量优化，逐项提交并推送 `origin/main`：
+  - 书库多字段排序（`c6fe219`）：`/api/books` 增加 `sort`/`dir` 白名单参数（time/title/author/rating/size，asc/desc），非法键回落 time-desc，recommended 分支仍随机；`public/library.html`/`library.js` 加排序下拉并拆分请求参数，`style.css` 把目录栏栅格由 4 列扩到 5 列并同步 999/470 断点。接口契约向后兼容，默认行为不变。
+  - 书库统计面板（`fe19bb2`）：新增 `/api/library/stats`（管理员，私有短缓存）按格式/语言/标准标签统计 `COUNT(*)` 与 `SUM(file_size)`；账号页新增统计面板，总览复用 `report-grid`，分维度用新 `stats-list` 布局，大小用 `formatBytes` 展示。
+  - 个人评论/笔记（`9688e78`）：`book_user_state` 加 `comment` 列（schema.sql 同步、迁移 `0018` ALTER、`BACKUP_TABLES` 加入 comment）；`normalizeComment` 去空限 500 字；state PUT upsert 评论、books GET 返回 `my_comment` 并随 ratings 带出他人评论；详情页加评论文本域、字数提示与评论展示。
+  - 单人默认隐藏多人视图（`8bd1e9f`）：`/api/auth/me` 返回 `multiUser`（账号数>1）与登录后的 `userCount`；详情页按 `multiUser` 隐藏“大家的打分”整块，书库卡片单人时隐藏平均分徽标，第 2 账号出现后自动恢复。未登录不返回精确账号数。
+  - 响应式验收数据（`f0786dc`）：`tests/helpers/ui-fixtures.mjs` 为 me 补 multiUser/userCount、为书籍详情补 my_comment 与多人评论、新增 /api/library/stats 响应，使新界面在 Playwright 检查中真正渲染。
+- 验证：`npm test` 从 169→189 项通过（排序 +7、统计 +4、评论 +5、me 接口 +4）；`node --check` 与 `git diff --check` 均无告警；本机临时安装 Playwright+Chromium 跑 `scripts/check-responsive-ui.mjs`，7 个宽度 460/460 通过，截图在被忽略的 `.wrangler/ui-check/`，未改动项目依赖（package.json 保持不变）。
 
 - 本次修复 Kindle 导入：新增 `public/kindle.js`，从正确的 Palm/MOBI 记录解析书名、作者、出版社、简介、ISBN、语言和封面；`public/metadata.js` 接入 `mobi`、`azw`、`azw3`，上传任务显示解析告警并在暂停/刷新后重新提取尚未挂接的封面；不破解 DRM、不覆盖 Telegram 原文件。新增真实布局 fixture 与 17 个 Kindle/EPUB 元数据测试、上传接线回归测试。
 
@@ -49,6 +59,12 @@
 
 ## 三、已知风险
 
+- 书库排序的 `sort`/`dir` 通过白名单映射到固定列名，非白名单键一律回落 `time-desc`，SQL 不拼接用户原始字符串；评分升序时未评分书 `rating_avg` 为 NULL，SQLite 视 NULL 最小会排在最前，属已验证的预期口径。
+- 书库统计按标准标签分维度统计时，一本书最多 3 个标签，其 `file_size` 会在各标签下重复计入，面板已用文案说明；统计走私有短缓存（30s），线上数值在缓存窗口内可能略滞后。
+- 个人评论随 `book_user_state` 存储且对所有登录账号可见（与评分同口径，不是私密笔记）；评论上限 500 字由前后端共同限制，`comment` 已纳入备份，迁移 `0018` 线上需执行后新列才生效。
+- 单人/多人视图由 `/api/auth/me` 的 `multiUser` 驱动，是账号总数>1 的即时判断；该字段仅前端展示用途，后端评分/评论接口在单人时仍可写入，不依赖该标志做权限控制。
+- 本次 Playwright 响应式验收为本机临时安装的浏览器模拟，未经 iOS Safari、Android 真机、软键盘与读屏器实测；新界面的真机表现仍待部署后观察。
+
 - 同一页面从宽屏切到窄屏后，原有推荐可能排列为多行，这是保留同一批书的预期行为；首次加载和“换一批”的数量仍按当时列数抽取。
 - 界面已用 Chromium 模拟桌面、平板和手机尺寸，未做 iOS Safari、Android 真机、软键盘和读屏器实测；超长名称会增加卡片高度，但不会以隐藏内容的方式掩盖越界。
 - 公开书目匹配与 AI 标签可能不准确，需人工复核；标签合并/删除是管理员操作，误操作会改变已分类书籍，页面已加二次确认。
@@ -65,7 +81,9 @@
 
 ## 四、下次最该做的事
 
-- 优先在 iOS Safari 与 Android 浏览器实机验证菜单、文件选择、键盘弹出及长任务列表。
+- 部署后在生产执行迁移 `0018_book_user_comment.sql`，确认 `book_user_state.comment` 列已就位，再验证详情页评论保存与备份导出含 comment。
+- 优先在 iOS Safari 与 Android 浏览器实机验证本次新界面（排序下拉、统计面板、评论文本域）及既有菜单、文件选择、键盘弹出、长任务列表。
+- 部署后在真实书库核对 `/api/library/stats` 的格式/语言/标签聚合口径与耗时，再决定是否调整私有缓存窗口。
 - 为备份增加恢复演练记录与定期校验（例如每月抽样解密一次备份）。
 - 观察 OPFS/文件系统写入在移动端的实际表现，必要时为大文件下载补充后台任务。
 - 按需清理线上 647 个从未使用的标准标签，或先用“合并重复标签”收敛。
