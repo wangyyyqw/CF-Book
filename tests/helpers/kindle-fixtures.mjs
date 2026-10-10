@@ -15,7 +15,7 @@ export function numberRecord(type, value) {
 
 export function kindleHeader({
   title = '正确的中文书名', author = '测试作者', pdbTitle = 'Internal_database_name',
-  fullTitle = '完整书名', encoding = 65001, version = 6, firstImage = 2,
+  fullTitle = '完整书名', encoding = 65001, version = 6, firstImage = 2, textRecords = 2,
   coverOffset = 1, encryption = 0, extraRecords = [], includeExth = true,
 } = {}) {
   const headerLength = version === 8 ? 264 : 232;
@@ -38,7 +38,7 @@ export function kindleHeader({
   view.setUint16(12, encryption);
   bytes.set(new TextEncoder().encode('MOBI'), 16);
   view.setUint32(20, headerLength);
-  view.setUint32(24, 2);
+  view.setUint32(24, textRecords);
   view.setUint32(28, encoding);
   view.setUint32(36, version);
   view.setUint32(84, nameOffset);

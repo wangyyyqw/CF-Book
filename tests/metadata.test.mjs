@@ -132,6 +132,16 @@ test('双格式文件读取 KF8 的更新书名，封面沿用共享的 MOBI7 �
   assert.deepEqual((await extractCoverFromFile(bytes, 'dual.mobi'))?.bytes, kindleCover);
 });
 
+test('双格式封面偏移指向 KF8 资源时，资源起点按 KF8 文本记录数计算', async () => {
+  const legacy = kindleHeader({ title: '旧书名', firstImage: 2, extraRecords: [numberRecord(121, 5)] });
+  const modern = kindleHeader({ version: 8, title: 'KF8 新书名', firstImage: 0xffffffff, textRecords: 1, coverOffset: 3 });
+  const bytes = palmDatabase([
+    legacy.bytes, new Uint8Array([1]), new Uint8Array([2]), new Uint8Array([3]),
+    new TextEncoder().encode('BOUNDARY'), modern.bytes, new TextEncoder().encode('KF8 正文'), kindleCover,
+  ]);
+  assert.deepEqual((await extractCoverFromFile(bytes, 'dual.mobi'))?.bytes, kindleCover);
+});
+
 test('无有效封面声明时不把任意正文图片当封面', async () => {
   const bytes = kindleFile({ coverOffset: null });
   assert.equal(await extractCoverFromFile(bytes, 'no-cover.mobi'), null);
