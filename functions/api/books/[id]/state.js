@@ -1,6 +1,6 @@
 import { json, err } from '../../../utils/http.js';
 import { dbGet, dbRun, nowSec } from '../../../utils/db.js';
-import { normalizeFavorite, normalizeRating, normalizeStatus } from '../../../utils/books.js';
+import { normalizeComment, normalizeFavorite, normalizeRating, normalizeStatus } from '../../../utils/books.js';
 
 // 记录当前账号对这本书的评分与阅读状态（每人一份，互不覆盖）
 export async function onRequestPut(context) {
@@ -18,7 +18,7 @@ export async function onRequestPut(context) {
 
   const existing = await dbGet(
     env,
-    'SELECT rating, status, is_favorite FROM book_user_state WHERE book_id = ? AND user_id = ?',
+    'SELECT rating, status, is_favorite, comment FROM book_user_state WHERE book_id = ? AND user_id = ?',
     params.id,
     user.id
   );
@@ -27,21 +27,23 @@ export async function onRequestPut(context) {
   const isFavorite = body.isFavorite != null
     ? normalizeFavorite(body.isFavorite)
     : (existing?.is_favorite ?? 0);
+  const comment = body.comment != null ? normalizeComment(body.comment) : (existing?.comment ?? '');
 
   await dbRun(
     env,
-    `INSERT INTO book_user_state (book_id, user_id, rating, status, is_favorite, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO book_user_state (book_id, user_id, rating, status, is_favorite, comment, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(book_id, user_id)
      DO UPDATE SET rating = excluded.rating, status = excluded.status,
-       is_favorite = excluded.is_favorite, updated_at = excluded.updated_at`,
+       is_favorite = excluded.is_favorite, comment = excluded.comment, updated_at = excluded.updated_at`,
     params.id,
     user.id,
     rating,
     status,
     isFavorite,
+    comment,
     nowSec()
   );
 
-  return json({ ok: true, rating, status, isFavorite: Boolean(isFavorite) });
+  return json({ ok: true, rating, status, isFavorite: Boolean(isFavorite), comment });
 }

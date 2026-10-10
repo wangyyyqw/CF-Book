@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS book_user_state (
   rating       REAL NOT NULL DEFAULT 0,
   status       TEXT NOT NULL DEFAULT 'unread',
   is_favorite  INTEGER NOT NULL DEFAULT 0,
+  comment      TEXT NOT NULL DEFAULT '',
   updated_at   INTEGER NOT NULL,
   PRIMARY KEY (book_id, user_id)
 );

@@ -970,6 +970,12 @@ body.library-page.library-dark {
   color: var(--ink);
 }
 
+.library-dark .state-row .comment-field textarea {
+  border-color: #625d54;
+  background: #282724;
+  color: var(--ink);
+}
+
 .library-bar select option {
   background: #fffdf6;
   color: #1e1c19;
@@ -1230,6 +1236,32 @@ body.library-page.library-dark .shell > .panel {
   width: auto;
 }
 
+.state-row .comment-field {
+  flex: 1 1 100%;
+}
+
+.state-row .comment-field textarea {
+  width: 100%;
+  min-height: 3.4rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid #aaa092;
+  border-radius: 0;
+  background: rgba(255, 252, 244, 0.72);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+}
+
+.state-row .comment-count {
+  display: block;
+  margin-top: 0.2rem;
+  text-align: right;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .ratings-box h3 {
   margin: 1.1rem 0 0.5rem;
   font-size: 0.92rem;
@@ -1245,9 +1277,8 @@ body.library-page.library-dark .shell > .panel {
 }
 
 .ratings li {
-  display: flex;
-  align-items: baseline;
-  gap: 0.7rem;
+  display: grid;
+  gap: 0.3rem;
   padding: 0.35rem 0.55rem;
   border-radius: 6px;
   background: var(--control-bg);
@@ -1255,6 +1286,21 @@ body.library-page.library-dark .shell > .panel {
 
 .ratings li.mine {
   background: var(--soft-bg);
+}
+
+.ratings .rating-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+}
+
+.ratings .rating-comment {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .ratings .who {

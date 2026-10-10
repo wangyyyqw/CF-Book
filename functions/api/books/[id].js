@@ -20,7 +20,7 @@ export async function onRequestGet(context) {
   // 每个账号各自的评分与状态，所有人都能看见
   const states = await dbAll(
     env,
-    `SELECT s.user_id, s.rating, s.status, s.is_favorite, s.updated_at, u.username, u.display_name
+    `SELECT s.user_id, s.rating, s.status, s.is_favorite, s.comment, s.updated_at, u.username, u.display_name
        FROM book_user_state s JOIN users u ON u.id = s.user_id
       WHERE s.book_id = ? ORDER BY s.updated_at DESC`,
     params.id
@@ -30,6 +30,7 @@ export async function onRequestGet(context) {
   book.my_rating = mine ? mine.rating : 0;
   book.my_status = mine ? mine.status : 'unread';
   book.my_favorite = mine ? Boolean(mine.is_favorite) : false;
+  book.my_comment = mine ? (mine.comment || '') : '';
   book.ratings = states;
   book.rating_count = scored.length;
   book.rating_avg = scored.length

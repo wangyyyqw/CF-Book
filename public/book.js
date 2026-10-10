@@ -5,12 +5,18 @@ const $ = (id) => document.getElementById(id);
 const id = new URLSearchParams(location.search).get('id');
 
 const STATUS_LABEL = { unread: '未读', reading: '在读', read: '已读' };
+const MAX_COMMENT_LENGTH = 500;
 
 let me = null;
 let tagDimensions = [];
 let tagSelects = [];
 let shelfOptions = [];
 let shelfSelection = new Set();
+
+function updateCommentCount() {
+  const value = $('f-comment').value || '';
+  $('comment-count').textContent = `${value.length} / ${MAX_COMMENT_LENGTH}`;
+}
 
 async function loadShelfPicker(selectedIds) {
   shelfSelection = new Set(selectedIds || []);
@@ -79,7 +85,7 @@ function renderRatings(book) {
     ? `大家的打分 · 平均 ${Number(book.rating_avg).toFixed(1)}（${book.rating_count} 人）`
     : '大家的打分';
 
-  const rows = (book.ratings || []).filter((r) => Number(r.rating) > 0 || r.status !== 'unread');
+  const rows = (book.ratings || []).filter((r) => Number(r.rating) > 0 || r.status !== 'unread' || r.comment);
   if (!rows.length) {
     $('ratings').innerHTML = '<li class="muted">还没有人打分或标记状态</li>';
     return;
@@ -88,10 +94,16 @@ function renderRatings(book) {
     .map((r) => {
       const mine = me && r.user_id === me.id;
       const score = Number(r.rating) > 0 ? Number(r.rating).toFixed(1) : '—';
+      const comment = r.comment
+        ? `<p class="rating-comment">${escapeHtml(r.comment)}</p>`
+        : '';
       return `<li class="${mine ? 'mine' : ''}">
-        <span class="who">${escapeHtml(r.display_name || r.username)}${mine ? '（我）' : ''}</span>
-        <span class="score">${score}</span>
-        <span class="st">${escapeHtml(STATUS_LABEL[r.status] || r.status)}${r.is_favorite ? ' · 收藏' : ''}</span>
+        <div class="rating-head">
+          <span class="who">${escapeHtml(r.display_name || r.username)}${mine ? '（我）' : ''}</span>
+          <span class="score">${score}</span>
+          <span class="st">${escapeHtml(STATUS_LABEL[r.status] || r.status)}${r.is_favorite ? ' · 收藏' : ''}</span>
+        </div>
+        ${comment}
       </li>`;
     })
     .join('');
@@ -113,6 +125,8 @@ async function load() {
   $('f-rating').value = b.my_rating || 0;
   $('f-status').value = b.my_status || 'unread';
   $('f-favorite').checked = Boolean(b.my_favorite);
+  $('f-comment').value = b.my_comment || '';
+  updateCommentCount();
   await loadTagOptions((b.tag_details || []).map((tag) => tag.tag_id));
   $('tag-groups').innerHTML = (b.tag_details || []).length
     ? (b.tag_details || []).map((tag) => `<span class="tag-chip">${escapeHtml(tag.name)}</span>`).join('')
@@ -142,6 +156,7 @@ $('save-state').addEventListener('click', async () => {
       rating: Number($('f-rating').value) || 0,
       status: $('f-status').value,
       isFavorite: $('f-favorite').checked,
+      comment: $('f-comment').value,
     }),
   });
   const data = await res.json().catch(() => ({}));
@@ -245,3 +260,5 @@ async function init() {
 }
 
 init();
+
+$('f-comment').addEventListener('input', updateCommentCount);

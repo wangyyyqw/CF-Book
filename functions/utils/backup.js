@@ -13,7 +13,7 @@ export const BACKUP_TABLES = [
   { name: 'books', columns: ['id', 'upload_id', 'title', 'author', 'description', 'cover', 'format', 'isbn', 'publisher', 'language', 'file_name', 'file_size', 'sha256', 'created_by', 'created_at', 'updated_at', 'title_cleaned_at'] },
   { name: 'uploads', columns: ['upload_id', 'filename', 'mime', 'total_size', 'chunk_size', 'total_chunks', 'sha256', 'status', 'owner', 'verified_at', 'verify_result', 'created_at', 'updated_at'] },
   { name: 'chunks', columns: ['upload_id', 'idx', 'size', 'sha256', 'status', 'tg_chat_id', 'tg_message_id', 'tg_file_id', 'error', 'retries', 'updated_at'] },
-  { name: 'book_user_state', columns: ['book_id', 'user_id', 'rating', 'status', 'is_favorite', 'updated_at'] },
+  { name: 'book_user_state', columns: ['book_id', 'user_id', 'rating', 'status', 'is_favorite', 'comment', 'updated_at'] },
   { name: 'tag_dimensions', columns: ['dimension', 'name_zh', 'description'] },
   { name: 'standard_tags', columns: ['tag_id', 'name', 'dimension', 'category', 'parent_id', 'description', 'status'] },
   { name: 'standard_tag_aliases', columns: ['alias_id', 'tag_id', 'alias'] },
