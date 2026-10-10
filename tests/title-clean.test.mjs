@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanBookTitle, normalizeCleanedTitle } from '../functions/utils/ai-classification.js';
+import {
+  cleanBookTitle,
+  isTransientAiError,
+  normalizeCleanedTitle,
+  retryWithBackoff,
+} from '../functions/utils/ai-classification.js';
 import { createD1 } from './helpers/d1.mjs';
 import { encryptApiKey } from '../functions/utils/ai-provider.js';
 
@@ -82,4 +87,91 @@ test('自定义 OpenAI/Anthropic Provider 也用于书名清洗', async () => {
       globalThis.fetch = originalFetch;
     }
   }
+});
+
+test('瞬时错误按指数退避自动重跑，成功后返回书名', async () => {
+  const sleeps = [];
+  let attempts = 0;
+  const result = await retryWithBackoff(
+    async () => {
+      attempts += 1;
+      if (attempts < 3) {
+        const error = new Error('Service temporarily unavailable');
+        error.statusCode = 503;
+        throw error;
+      }
+      return '西行漫记';
+    },
+    { sleep: async (ms) => sleeps.push(ms), random: () => 1 }
+  );
+  assert.equal(result, '西行漫记');
+  assert.equal(attempts, 3, '应在第 3 次尝试成功');
+  assert.deepEqual(sleeps, [1500, 4000], '按递增间隔退避');
+});
+
+test('重试用尽后抛出最后一次错误', async () => {
+  let attempts = 0;
+  await assert.rejects(
+    retryWithBackoff(
+      async () => {
+        attempts += 1;
+        const error = new Error('timeout');
+        error.name = 'TimeoutError';
+        throw error;
+      },
+      { sleep: async () => {}, random: () => 0 }
+    ),
+    /timeout/
+  );
+  assert.equal(attempts, 3, '初始 1 次 + 2 次重试');
+});
+
+test('确定性失败不重试，避免白耗额度', async () => {
+  let attempts = 0;
+  await assert.rejects(
+    retryWithBackoff(
+      async () => {
+        attempts += 1;
+        const error = new Error('AI 未能识别书名');
+        error.isRetryable = false;
+        throw error;
+      },
+      { sleep: async () => {}, random: () => 0 }
+    ),
+    /未能识别/
+  );
+  assert.equal(attempts, 1, '不可重试错误只调用一次');
+});
+
+test('isTransientAiError 只认上游抖动类错误', () => {
+  assert.equal(isTransientAiError(Object.assign(new Error('x'), { statusCode: 503 })), true);
+  assert.equal(isTransientAiError(Object.assign(new Error('x'), { statusCode: 429 })), true);
+  assert.equal(isTransientAiError(Object.assign(new Error('x'), { isRetryable: true })), true);
+  assert.equal(isTransientAiError(Object.assign(new Error('timeout'), { name: 'TimeoutError' })), true);
+  assert.equal(isTransientAiError(Object.assign(new Error('AI 未能识别书名'), { isRetryable: false })), false);
+  assert.equal(isTransientAiError(Object.assign(new Error('书籍不存在'), { statusCode: 404 })), false);
+  assert.equal(isTransientAiError(null), false);
+});
+
+test('清洗遇到上游 503 会退避重跑并最终写入书名', async () => {
+  const env = envWithBook();
+  let calls = 0;
+  env.AI = {
+    async run() {
+      calls += 1;
+      if (calls < 2) {
+        const error = new Error('Service temporarily unavailable');
+        error.statusCode = 503;
+        throw error;
+      }
+      return { response: '挽救计划', usage: { prompt_tokens: 10, completion_tokens: 4 } };
+    },
+  };
+  const result = await cleanBookTitle(env, 'b1', {
+    retry: (task) => retryWithBackoff(task, { sleep: async () => {}, random: () => 0 }),
+  });
+  assert.equal(result.title, '挽救计划');
+  assert.equal(calls, 2, '第一次 503 后重试成功');
+  const book = await env.DB.prepare('SELECT title FROM books WHERE id = ?').bind('b1').first();
+  assert.equal(book.title, '挽救计划');
 });

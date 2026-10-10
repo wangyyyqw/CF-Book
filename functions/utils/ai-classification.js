@@ -8,6 +8,8 @@ import { getTagCandidates, normalizeStandardTagResult, replaceStandardTags, vali
 export const DEFAULT_AI_MODEL = '@cf/meta/llama-3.2-3b-instruct';
 export const DEFAULT_DAILY_LIMIT = 10000;
 export const MAX_AI_ATTEMPTS = 2;
+// 上游 AI 偶发 5xx/超时会中断单本书清洗；按递增间隔自动重跑，避免整批失败。
+export const RETRY_DELAYS_MS = [1500, 4000];
 
 // 用户提供的书名清洗提示词：只提取主书名，删除营销文案、作者/出版社/榜单/括号内容等。
 const TITLE_CLEAN_PROMPT = `你是一个专业的“书名清洗助手”。你的任务是从用户提供的文本中，只提取并清洗出主书名。要求：1. 只输出清洗后的书名，不要解释、不要引号、不要书名号、不要多余标点或换行。2. 删除所有营销文案、作者介绍、译者信息、出版社、榜单、销量、推荐语、奖项、影视信息、系列名、版本说明、套装信息等。3. 删除所有括号及其内容，包括：() （） [] 【】。括号内即使出现《书名》，也视为宣传或说明，不提取。4. 优先识别文本开头到第一个左括号之前的内容为主书名；如果开头是《书名》，取最外层《》内的文字。5. 去掉“书名：”“作者：”“著”“译”“出版”“系列”“全新力作”“畅销榜”“第一名”等非书名词。6. 保留书名中必要的数字、英文、空格、间隔号、冒号等，但最终不要保留书名号。7. 如果无法识别书名，只输出：未识别到书名。示例：输入：挽救计划(《火星救援》作者安迪·威尔全新力作,出版后连续16周雄踞亚马逊科幻畅销榜第一名!科技宅男+跨星系好友联袂上演太空大救援,硬核工程风+幽默碎碎念打造年度科幻.) (译林幻系列)输出：挽救计划输入：《沙丘》（电影纪念版）(科幻经典)输出：沙丘输入：三体（刘慈欣著，地球往事三部曲）输出：三体待清洗文本：{{在这里粘贴要处理的文本}}`;
@@ -34,50 +36,93 @@ export function estimateNeurons(promptTokens, completionTokens, model = DEFAULT_
   return (promptTokens * rates.input + completionTokens * rates.output) / 1_000_000;
 }
 
+// 只重试上游抖动类错误；确定性失败（如“AI 未能识别书名”）不重试，避免白耗额度。
+export function isTransientAiError(error) {
+  if (!error) return false;
+  if (error.isRetryable === false) return false;
+  if (error.isRetryable === true) return true;
+  const status = Number(error.statusCode ?? error.status ?? error.cause?.statusCode ?? 0);
+  if (status === 408 || status === 409 || status === 425 || status === 429 || status >= 500) return true;
+  const name = String(error.name || '');
+  if (name === 'TimeoutError' || name === 'AbortError') return true;
+  return /timeout|timed out|aborted|fetch failed|network|temporarily unavailable|ECONNRESET|ETIMEDOUT|socket hang up|rate limit/i.test(
+    String(error.message || error)
+  );
+}
+
+// 带指数退避与抖动的自动重跑；sleep/random/shouldRetry 可注入以便测试。
+export async function retryWithBackoff(
+  task,
+  {
+    delays = RETRY_DELAYS_MS,
+    sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    random = Math.random,
+    shouldRetry = isTransientAiError,
+  } = {}
+) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await task(attempt);
+    } catch (error) {
+      if (attempt >= delays.length || !shouldRetry(error)) throw error;
+      // 抖动到 50%–100%，避免并发任务同时重试再次打满上游。
+      await sleep(delays[attempt] * (0.5 + random() * 0.5));
+    }
+  }
+}
+
 // AI 书名清洗：复用同一套自定义 Provider / Workers AI 配置，只更新 D1 书名，
 // 不触碰 Telegram 分块与 R2 封面。识别失败或异常时保留原书名。
-export async function cleanBookTitle(env, bookId) {
+export async function cleanBookTitle(env, bookId, { retry = retryWithBackoff } = {}) {
   const book = await dbGet(env, 'SELECT * FROM books WHERE id = ?', bookId);
   if (!book) throw new Error('书籍不存在');
   const originalTitle = String(book.title || book.file_name || '')
     .replace(/\.[^.]+$/, '').trim() || '未命名';
   const prompt = TITLE_CLEAN_PROMPT.replace('{{在这里粘贴要处理的文本}}', originalTitle);
-  let usage = { prompt_tokens: 0, completion_tokens: 0 };
+  const usage = { prompt_tokens: 0, completion_tokens: 0 };
   let model = env.AI_MODEL || DEFAULT_AI_MODEL;
   let apiKey = '';
   try {
     const providerConfig = await dbGet(env, 'SELECT * FROM ai_provider_config WHERE id = 1');
-    let text = '';
-    if (providerConfig) {
-      model = `${providerConfig.format}:${providerConfig.model}`;
-      apiKey = await decryptApiKey(env, providerConfig.encrypted_key);
-      const provider = createConfiguredProvider(providerConfig, apiKey);
-      const result = await generateText({
-        model: provider(providerConfig.model),
-        prompt,
-        // 推理型模型（如 deepseek-v4.1-flash）会先输出思考再给书名，
-        // 预算过小会把 token 全花在思考上、正文为空，导致清洗失败。
-        maxOutputTokens: 1024,
-        maxRetries: 0,
-        abortSignal: AbortSignal.timeout(45000),
-      });
-      text = result.text || result.reasoningText || '';
-      usage = normalizeUsage({ prompt_tokens: result.usage.inputTokens, completion_tokens: result.usage.outputTokens });
-    } else {
-      if (!env.AI) throw new Error('未配置自定义 AI 接口或 Workers AI 绑定');
-      const response = await env.AI.run(model, {
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 512,
-        temperature: 0.1,
-      });
-      text = responseText(response);
-      usage = normalizeUsage(response?.usage);
-    }
-    const cleanedTitle = normalizeCleanedTitle(text);
-    if (!cleanedTitle) throw new Error('AI 未能识别书名');
-    await dbRun(env, 'UPDATE books SET title=?, title_cleaned_at=?, updated_at=? WHERE id=?', cleanedTitle, nowSec(), nowSec(), bookId);
+    const text = await retry(async () => {
+      let attemptText = '';
+      if (providerConfig) {
+        model = `${providerConfig.format}:${providerConfig.model}`;
+        apiKey = await decryptApiKey(env, providerConfig.encrypted_key);
+        const provider = createConfiguredProvider(providerConfig, apiKey);
+        const result = await generateText({
+          model: provider(providerConfig.model),
+          prompt,
+          // 推理型模型（如 deepseek-v4.1-flash）会先输出思考再给书名，
+          // 预算过小会把 token 全花在思考上、正文为空，导致清洗失败。
+          maxOutputTokens: 1024,
+          maxRetries: 0,
+          abortSignal: AbortSignal.timeout(45000),
+        });
+        attemptText = result.text || result.reasoningText || '';
+        Object.assign(usage, normalizeUsage({ prompt_tokens: result.usage.inputTokens, completion_tokens: result.usage.outputTokens }));
+      } else {
+        if (!env.AI) throw new Error('未配置自定义 AI 接口或 Workers AI 绑定');
+        const response = await env.AI.run(model, {
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 512,
+          temperature: 0.1,
+        });
+        attemptText = responseText(response);
+        Object.assign(usage, normalizeUsage(response?.usage));
+      }
+      const cleaned = normalizeCleanedTitle(attemptText);
+      // 确定性失败不重试：直接抛出，交给外层保留原书名。
+      if (!cleaned) {
+        const failure = new Error('AI 未能识别书名');
+        failure.isRetryable = false;
+        throw failure;
+      }
+      return cleaned;
+    });
+    await dbRun(env, 'UPDATE books SET title=?, title_cleaned_at=?, updated_at=? WHERE id=?', text, nowSec(), nowSec(), bookId);
     await saveUsage(env, { bookId, model, usage, status: 'completed' });
-    return { bookId, originalTitle, title: cleanedTitle, usage };
+    return { bookId, originalTitle, title: text, usage };
   } catch (error) {
     const rawMessage = error instanceof Error ? error.message : String(error);
     const message = apiKey ? rawMessage.replaceAll(apiKey, '[已隐藏]') : rawMessage;

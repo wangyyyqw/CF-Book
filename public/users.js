@@ -147,12 +147,14 @@ async function cleanTitlesBatch() {
   try {
     let processed = 0;
     let failed = 0;
-    let offset = 0;
+    const attempted = [];
     while (true) {
       const res = await api('/api/ai/title-clean', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ limit: 10, offset }),
+        // 已清洗的书会离开待清洗集合，这里始终从头取；本轮失败的书用 exclude 跳过，
+        // 避免 offset 跳过书籍，也避免对确定性失败反复消耗额度。
+        body: JSON.stringify({ limit: 10, exclude: attempted }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
@@ -161,14 +163,17 @@ async function cleanTitlesBatch() {
         return;
       }
       processed += data.processed;
-      failed += data.results.filter((result) => result.error).length;
-      $('ai-msg').textContent = `清洗中：已处理 ${processed} 本${failed ? `，失败 ${failed} 本` : ''}`;
+      const errors = data.results.filter((result) => result.error);
+      failed += errors.length;
+      attempted.push(...errors.map((result) => result.bookId));
+      $('ai-msg').textContent = `清洗中：已处理 ${processed} 本${failed ? `，失败 ${failed} 本` : ''}，剩余 ${data.pending} 本`;
       await loadAiUsage();
+      // 候选不足一批说明已没有可尝试的书；失败项下一轮会被 exclude 跳过，不会空转。
       if (data.processed < data.batchLimit) break;
-      offset += data.processed;
       await new Promise((resolve) => setTimeout(resolve, 1100));
     }
-    $('ai-msg').textContent = `书名清洗完成，共处理 ${processed} 本${failed ? `，失败 ${failed} 本` : ''}`;
+    const remaining = (await api('/api/ai/title-clean').then((r) => r.json().catch(() => ({})))).pending;
+    $('ai-msg').textContent = `书名清洗完成，共处理 ${processed} 本${failed ? `，失败 ${failed} 本` : ''}${remaining ? `，仍有 ${remaining} 本未能清洗（可在书籍编辑页手动修正）` : ''}`;
   } finally {
     $('ai-title-clean').disabled = false;
   }

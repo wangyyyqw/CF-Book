@@ -27,15 +27,21 @@ export async function onRequestPost(context) {
   const limit = Math.min(Math.max(Number(body.limit) || 10, 1), 50);
   const offset = Math.max(Number(body.offset) || 0, 0);
   const force = body.force === true;
+  // 本轮已尝试但失败的书；重跑时跳过，避免对确定性失败反复消耗额度。
+  const exclude = Array.isArray(body.exclude)
+    ? body.exclude.filter((id) => typeof id === 'string').slice(0, 200)
+    : [];
   const start = Math.floor(Date.now() / 86400000) * 86400;
   if (await usedAiNeuronsToday(env, start) >= dailyLimit(env)) return err('今日 AI 额度已用尽', 429);
 
+  const excludeClause = exclude.length ? ` AND id NOT IN (${exclude.map(() => '?').join(',')})` : '';
   const books = await dbAll(
     env,
     `SELECT id FROM books
-     WHERE ?=1 OR title_cleaned_at = 0
+     WHERE (?=1 OR title_cleaned_at = 0)${excludeClause}
      ORDER BY created_at ASC LIMIT ? OFFSET ?`,
     force ? 1 : 0,
+    ...exclude,
     limit,
     offset
   );
@@ -49,12 +55,18 @@ export async function onRequestPost(context) {
       results.push({ bookId: book.id, error: error.message });
     }
   }
+  const cleaned = results.filter((item) => !item.error).length;
+  const pending = Number(
+    (await dbGet(env, 'SELECT COUNT(*) AS count FROM books WHERE title_cleaned_at = 0')).count || 0
+  );
   return json({
     ok: true,
     results,
     processed: results.length,
+    cleaned,
+    pending,
     batchLimit: limit,
-    hasMore: offset + results.length < Number((await dbGet(env, 'SELECT COUNT(*) AS count FROM books')).count || 0),
+    hasMore: pending > 0,
     finishedAt: nowSec(),
   });
 }
