@@ -82,6 +82,27 @@ export async function standardTagDetails(env, bookId) {
   );
 }
 
+export async function standardTagDetailsMany(env, bookIds, { namesOnly = false } = {}) {
+  if (!bookIds.length) return new Map();
+  const marks = bookIds.map(() => '?').join(',');
+  const columns = namesOnly ? 't.name' : 't.tag_id, t.name, t.dimension, t.category, t.description';
+  const rows = await dbAll(
+    env,
+    `SELECT bt.book_id, ${columns}
+       FROM book_standard_tags bt JOIN standard_tags t ON t.tag_id=bt.tag_id
+      WHERE bt.book_id IN (${marks}) ORDER BY bt.book_id, CASE t.dimension
+        WHEN 'book_type' THEN 0 WHEN 'pub_field' THEN 1 WHEN 'web_genre' THEN 1
+        WHEN 'pub_topic' THEN 2 WHEN 'web_element' THEN 2 ELSE 3 END, t.category, t.name`,
+    ...bookIds
+  );
+  const result = new Map(bookIds.map((id) => [id, []]));
+  for (const row of rows) {
+    const { book_id: bookId, ...tag } = row;
+    result.get(bookId)?.push(tag);
+  }
+  return result;
+}
+
 export async function listStandardTagDimensions(env, { includeUnused = false } = {}) {
   const dimensions = await dbAll(env, 'SELECT dimension, name_zh, description FROM tag_dimensions ORDER BY rowid');
   const tags = await dbAll(env, `SELECT tag_id, name, dimension, category, description

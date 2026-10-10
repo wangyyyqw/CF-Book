@@ -1,4 +1,4 @@
-import { api, loadMe } from '/api.js';
+import { api, clearMeCache, loadMe } from '/api.js';
 
 // 顶栏右侧的账号区，各页面只需放一个 <div id="user-area"></div>
 const area = document.getElementById('user-area');
@@ -69,6 +69,7 @@ loadMe().then((data) => {
   });
   document.getElementById('user-logout').addEventListener('click', async () => {
     await api('/api/auth/logout', { method: 'POST' });
+    clearMeCache();
     location.href = '/login';
   });
 });

@@ -9,6 +9,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 // 这样接口测试跑的是真 SQL，能顺带发现列名、JOIN、分页这类问题。
 export function createD1() {
   const db = new DatabaseSync(':memory:');
+  let queryCount = 0;
   db.exec(readFileSync(join(ROOT, 'schema.sql'), 'utf8'));
   const tagLibrary = JSON.parse(readFileSync(join(ROOT, 'data/book_tag_library_v1.json'), 'utf8'));
   const dimension = db.prepare('INSERT INTO tag_dimensions (dimension, name_zh, description) VALUES (?, ?, ?)');
@@ -26,6 +27,7 @@ export function createD1() {
       db.exec(sql);
     },
     prepare(sql) {
+      queryCount += 1;
       const statement = {
         params: [],
         bind(...params) {
@@ -45,6 +47,12 @@ export function createD1() {
         },
       };
       return statement;
+    },
+    get queryCount() {
+      return queryCount;
+    },
+    resetQueryCount() {
+      queryCount = 0;
     },
     async batch(statements) {
       return Promise.all(statements.map((s) => s.run()));

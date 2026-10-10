@@ -1,6 +1,6 @@
 import { json, err } from '../utils/http.js';
 import { dbAll, dbGet } from '../utils/db.js';
-import { standardTagDetails } from '../utils/standard-tags.js';
+import { standardTagDetailsMany } from '../utils/standard-tags.js';
 import { canViewShelf } from '../utils/shelves.js';
 
 export async function onRequestGet(context) {
@@ -12,6 +12,8 @@ export async function onRequestGet(context) {
   const status = (url.searchParams.get('status') || '').trim();
   const shelfId = (url.searchParams.get('shelf') || '').trim();
   const recommended = url.searchParams.get('recommended') === '1';
+  const compact = url.searchParams.get('compact') === '1';
+  const countRequested = url.searchParams.get('count') !== '0';
   const requestedLimit = Number(url.searchParams.get('limit')) || (recommended ? 3 : 18);
   const limit = Math.min(requestedLimit, 100);
   const offset = Math.max(Number(url.searchParams.get('offset')) || 0, 0);
@@ -50,19 +52,23 @@ export async function onRequestGet(context) {
   }
   const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
 
-  // 总数与列表用同一套筛选条件，避免「共 N 本」与实际可翻页数量不一致
-  const matchedTotal = (await dbGet(env, `SELECT COUNT(*) AS n ${from}${whereSql}`, user.id, ...filters)).n;
-  const total = matchedTotal;
-
+  const columns = compact
+    ? 'b.id, b.title, b.author, b.cover'
+    : 'b.*';
+  const totalColumn = countRequested ? ', COUNT(*) OVER() AS matched_total' : '';
+  const tagsColumn = compact ? '' :
+    ', (SELECT group_concat(t.name, \',\') FROM book_standard_tags bt JOIN standard_tags t ON t.tag_id = bt.tag_id WHERE bt.book_id = b.id) AS tags';
   const books = await dbAll(
     env,
-    `SELECT b.*,
-      (SELECT group_concat(t.name, ',') FROM book_standard_tags bt JOIN standard_tags t ON t.tag_id = bt.tag_id WHERE bt.book_id = b.id) AS tags,
+    `SELECT ${columns}${totalColumn}${tagsColumn},
       (SELECT ROUND(AVG(s.rating), 1) FROM book_user_state s WHERE s.book_id = b.id AND s.rating > 0) AS rating_avg,
       (SELECT COUNT(*) FROM book_user_state s WHERE s.book_id = b.id AND s.rating > 0) AS rating_count,
-      COALESCE(mine.rating, 0) AS my_rating,
+      ${compact
+        ? `COALESCE(mine.status, 'unread') AS my_status,
+      COALESCE(mine.is_favorite, 0) AS my_favorite`
+        : `COALESCE(mine.rating, 0) AS my_rating,
       COALESCE(mine.status, 'unread') AS my_status,
-      COALESCE(mine.is_favorite, 0) AS my_favorite
+      COALESCE(mine.is_favorite, 0) AS my_favorite`}
      ${from}${whereSql}
      ORDER BY ${recommended ? 'RANDOM()' : 'b.created_at DESC, b.id DESC'}
      LIMIT ? OFFSET ?`,
@@ -72,13 +78,23 @@ export async function onRequestGet(context) {
     offset
   );
 
+  let total = countRequested ? (books.length ? Number(books[0].matched_total) : (offset ?
+    (await dbGet(env, `SELECT COUNT(*) AS n ${from}${whereSql}`, user.id, ...filters)).n : 0)) : null;
+  const detailMap = await standardTagDetailsMany(env, books.map((book) => book.id), { namesOnly: compact });
   for (const book of books) {
-    const details = await standardTagDetails(env, book.id);
+    delete book.matched_total;
+    const details = detailMap.get(book.id) || [];
     book.tag_details = details;
-    book.tag_categories = details.reduce((groups, tag) => {
-      (groups[tag.dimension] ||= []).push(tag.name);
-      return groups;
-    }, {});
+    if (!compact) {
+      book.tag_categories = details.reduce((groups, tag) => {
+        (groups[tag.dimension] ||= []).push(tag.name);
+        return groups;
+      }, {});
+    }
   }
-  return json({ ok: true, books, total, limit, offset, hasMore: offset + books.length < total });
+  return json({ ok: true, books, total, limit, offset, hasMore: total == null ? false : offset + books.length < total }, 200, {
+    'Cache-Control': recommended
+      ? 'private, no-store'
+      : 'private, max-age=5, stale-while-revalidate=15',
+  });
 }

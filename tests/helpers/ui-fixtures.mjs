@@ -69,6 +69,17 @@ export function uiApiResponse(path, query, pagePath) {
     dimensions: uiDimensions.map((item) => ({ ...item, tags: uiTags.filter((tag) => tag.dimension === item.dimension) })),
   };
   if (path === '/api/shelves') return { ok: true, shelves: uiShelves };
+  if (path === '/api/library/facets') return {
+    ok: true,
+    tags: {
+      untaggedCount: 2,
+      dimensions: uiDimensions.map((item) => ({
+        ...item,
+        tags: uiTags.filter((tag) => tag.dimension === item.dimension),
+      })),
+    },
+    shelves: uiShelves,
+  };
   if (path === '/api/upload/list') return { ok: true, uploads: uiUploads };
   if (path === '/api/users') return { ok: true, users: [uiUser, {
     id: 'ui-member', username: 'a_very_long_username_without_breaks', display_name: '家庭成员', role: 'member', disabled: 0,

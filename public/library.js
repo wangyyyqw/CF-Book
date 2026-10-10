@@ -27,6 +27,10 @@ let requestId = 0;
 let recommendationRequestId = 0;
 let me = null;
 let shelves = [];
+let facetsCacheKey = '';
+let facetsCache = null;
+let booksController = null;
+let recommendationController = null;
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -63,15 +67,21 @@ function cardHtml(b, index) {
 async function loadRecommendations() {
   const columns = columnsForWidth();
   const token = ++recommendationRequestId;
+  recommendationController?.abort();
+  recommendationController = new AbortController();
   refreshRecommendations.disabled = true;
   try {
-    const res = await api(`/api/books?recommended=1&limit=${columns}`);
+    const res = await api(`/api/books?recommended=1&compact=1&count=0&limit=${columns}`, {
+      signal: recommendationController.signal,
+    });
     const data = await res.json().catch(() => ({}));
     if (token !== recommendationRequestId) return;
     if (!res.ok || !data.ok) return;
     recommendEl.innerHTML = data.books.map((book, index) => cardHtml(book, index)).join('');
     recommendNote.textContent = `随机抽取 ${data.books.length} 本`;
     if (!data.books.length) recommendEl.innerHTML = '<p class="empty">书库还没有推荐书籍。</p>';
+  } catch (error) {
+    if (error.name !== 'AbortError') throw error;
   } finally {
     if (token === recommendationRequestId) refreshRecommendations.disabled = false;
   }
@@ -86,27 +96,6 @@ function columnsForWidth() {
 
 function pageSizeForWidth() {
   return columnsForWidth() * 4;
-}
-
-async function loadTags() {
-  const res = await api('/api/tags');
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.ok) return;
-  const untaggedOption = document.createElement('option');
-  untaggedOption.value = '__untagged__';
-  untaggedOption.textContent = `无标签（${Number(data.untaggedCount) || 0}）`;
-  tagFilterEl.appendChild(untaggedOption);
-  for (const group of data.dimensions || []) {
-    const optgroup = document.createElement('optgroup');
-    optgroup.label = group.name_zh;
-    for (const tag of group.tags || []) {
-      const option = document.createElement('option');
-      option.value = tag.tag_id;
-      option.textContent = `${tag.name}（${tag.count}）`;
-      optgroup.appendChild(option);
-    }
-    if (optgroup.children.length) tagFilterEl.appendChild(optgroup);
-  }
 }
 
 // 共享书架只有管理员能改名/删除，个人书架只有本人能动，与后端权限保持一致
@@ -141,12 +130,61 @@ function renderShelves() {
   }).join('');
 }
 
-async function loadShelves() {
-  const res = await api('/api/shelves');
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.ok) return;
+function readFacetsCache() {
+  try {
+    const raw = sessionStorage.getItem(facetsCacheKey);
+    const value = raw ? JSON.parse(raw) : null;
+    if (!value?.data || value.expiresAt <= Date.now()) return null;
+    return value.data;
+  } catch {
+    return null;
+  }
+}
+
+function saveFacetsCache(data) {
+  try {
+    sessionStorage.setItem(facetsCacheKey, JSON.stringify({ data, expiresAt: Date.now() + 60_000 }));
+  } catch {
+    // 隐私模式或存储配额不足时仍可正常使用书库。
+  }
+}
+
+function applyFacets(data) {
+  tagFilterEl.innerHTML = '<option value="">全部标签</option>';
+  const untaggedOption = document.createElement('option');
+  untaggedOption.value = '__untagged__';
+  untaggedOption.textContent = `无标签（${Number(data.tags.untaggedCount) || 0}）`;
+  tagFilterEl.appendChild(untaggedOption);
+  for (const group of data.tags.dimensions || []) {
+    const optgroup = document.createElement('optgroup');
+    optgroup.label = group.name_zh;
+    for (const tag of group.tags || []) {
+      const option = document.createElement('option');
+      option.value = tag.tag_id;
+      option.textContent = `${tag.name}（${tag.count}）`;
+      optgroup.appendChild(option);
+    }
+    if (optgroup.children.length) tagFilterEl.appendChild(optgroup);
+  }
   shelves = data.shelves || [];
   renderShelves();
+}
+
+async function loadFacets({ force = false } = {}) {
+  if (!force && facetsCache) return applyFacets(facetsCache);
+  if (!force) {
+    const cached = readFacetsCache();
+    if (cached) {
+      facetsCache = cached;
+      return applyFacets(cached);
+    }
+  }
+  const res = await api('/api/library/facets');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) return;
+  facetsCache = data;
+  saveFacetsCache(data);
+  applyFacets(data);
 }
 
 async function load({ reset = false } = {}) {
@@ -156,6 +194,8 @@ async function load({ reset = false } = {}) {
   }
   pageSize = pageSizeForWidth();
   const token = ++requestId;
+  booksController?.abort();
+  booksController = new AbortController();
 
   const params = new URLSearchParams();
   const q = searchEl.value.trim();
@@ -165,10 +205,17 @@ async function load({ reset = false } = {}) {
   if (shelfFilterEl.value) params.set('shelf', shelfFilterEl.value);
   params.set('limit', String(pageSize));
   params.set('offset', String((page - 1) * pageSize));
+  params.set('compact', '1');
 
   previousEl.disabled = true;
   nextEl.disabled = true;
-  const res = await api(`/api/books?${params}`);
+  let res;
+  try {
+    res = await api(`/api/books?${params}`, { signal: booksController.signal });
+  } catch (error) {
+    if (error.name === 'AbortError') return;
+    throw error;
+  }
   const data = await res.json();
   if (token !== requestId) return; // 已有更新的请求，丢弃这次结果
 
@@ -226,7 +273,7 @@ shelfCreateForm.addEventListener('submit', async (event) => {
   }
   shelfNameEl.value = '';
   shelfCreateMsg.textContent = '✓ 已创建';
-  await loadShelves();
+  await loadFacets({ force: true });
 });
 
 shelfListEl.addEventListener('click', async (event) => {
@@ -255,7 +302,7 @@ shelfListEl.addEventListener('click', async (event) => {
       shelfCreateMsg.textContent = `改名失败：${data.error || res.status}`;
       return;
     }
-    await loadShelves();
+    await loadFacets({ force: true });
     return;
   }
 
@@ -271,7 +318,7 @@ shelfListEl.addEventListener('click', async (event) => {
       shelfFilterEl.value = '';
       await load({ reset: true });
     }
-    await loadShelves();
+    await loadFacets({ force: true });
   }
 });
 
@@ -288,7 +335,8 @@ async function init() {
   me = data?.user || null;
   // 非管理员不能建共享书架，直接隐藏这个选项
   if (me?.role !== 'admin') shelfScopeEl.querySelector('option[value="shared"]')?.remove();
-  await Promise.all([load({ reset: true }), loadShelves(), loadTags(), loadRecommendations()]);
+  facetsCacheKey = `cf-book-library-facets:${me?.username || 'anonymous'}`;
+  await Promise.all([load({ reset: true }), loadFacets(), loadRecommendations()]);
 }
 
 init();

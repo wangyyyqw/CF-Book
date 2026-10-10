@@ -3,14 +3,29 @@ export function api(url, options = {}) {
   return fetch(url, { credentials: 'same-origin', ...options });
 }
 
+let meCache;
+let mePromise;
+
 export async function loadMe() {
-  try {
-    const res = await api('/api/auth/me');
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
+  if (meCache !== undefined) return meCache;
+  if (!mePromise) {
+    mePromise = (async () => {
+      try {
+        const res = await api('/api/auth/me');
+        meCache = res.ok ? await res.json() : null;
+      } catch {
+        meCache = null;
+      } finally {
+        mePromise = null;
+      }
+      return meCache;
+    })();
   }
+  return mePromise;
+}
+
+export function clearMeCache() {
+  meCache = undefined;
 }
 
 export function escapeHtml(value) {

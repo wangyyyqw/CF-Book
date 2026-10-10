@@ -4,7 +4,7 @@ import { cleanShelfName, listShelves, normalizeScope } from '../utils/shelves.js
 
 export async function onRequestGet(context) {
   const shelves = await listShelves(context.env, context.data.user);
-  return json({ ok: true, shelves });
+  return json({ ok: true, shelves }, 200, { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' });
 }
 
 // 共享书架只有管理员能建，个人书架任何账号都能建

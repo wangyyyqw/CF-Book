@@ -30,8 +30,12 @@ function ctx(env, query = '') {
   };
 }
 
+async function listResponse(env, query = '') {
+  return onRequestGet(ctx(env, query));
+}
+
 async function list(env, query = '') {
-  return (await onRequestGet(ctx(env, query))).json();
+  return (await listResponse(env, query)).json();
 }
 
 test('默认返回全部书籍，并给出总数与是否还有下一页', async () => {
@@ -151,6 +155,41 @@ test('推荐接口按请求数量从全部书籍随机返回', async () => {
   assert.equal(data.total, 12, '总数反映整个馆藏');
   assert.equal(new Set(data.books.map((book) => book.id)).size, 5);
   assert.ok(data.books.every((book) => /^r(?:[1-9]|1[0-2])$/.test(book.id)));
+});
+
+test('紧凑书目列表批量读取标签，不按每本书重复查询', async () => {
+  const env = makeEnv();
+  for (let i = 1; i <= 5; i++) addBook(env.DB, { id: `b${i}`, title: `书${i}`, created: i });
+  env.DB.exec(`INSERT INTO book_standard_tags (book_id, tag_id) VALUES
+    ('b1', 'BOOK_TYPE_0001'), ('b1', 'PUB_FIELD_0045'), ('b1', 'PUB_TOPIC_0001'),
+    ('b2', 'BOOK_TYPE_0001'), ('b2', 'PUB_FIELD_0049'), ('b2', 'PUB_TOPIC_0002');`);
+  env.DB.resetQueryCount();
+
+  const data = await list(env, '?compact=1&limit=5');
+  assert.equal(env.DB.queryCount, 2, '应为书目和整页标签各 1 次查询');
+  assert.equal(data.books[0].description, undefined, '紧凑响应不应携带详情页字段');
+  const book = data.books.find((item) => item.id === 'b1');
+  assert.equal(book.format, undefined, '紧凑响应不应携带详情页字段');
+  assert.equal(book.my_rating, undefined, '卡片不需要当前账号评分');
+  assert.deepEqual(book.tag_details, [{ name: '出版书' }, { name: '历史学' }, { name: '哲学思想' }]);
+});
+
+test('推荐请求显式跳过未使用的总数查询', async () => {
+  const env = makeEnv();
+  for (let i = 1; i <= 5; i++) addBook(env.DB, { id: `r${i}`, title: `推荐${i}`, created: i });
+  env.DB.resetQueryCount();
+  const data = await list(env, '?recommended=1&compact=1&count=0&limit=3');
+  assert.equal(data.total, null);
+  assert.equal(data.hasMore, false);
+  assert.equal(env.DB.queryCount, 2, '推荐只需书目和整页标签查询');
+});
+
+test('随机推荐不使用浏览器缓存，普通书目允许短期缓存', async () => {
+  const env = makeEnv();
+  const recommended = await listResponse(env, '?recommended=1&compact=1&count=0&limit=1');
+  const regular = await listResponse(env, '?compact=1&limit=1');
+  assert.equal(recommended.headers.get('Cache-Control'), 'private, no-store');
+  assert.equal(regular.headers.get('Cache-Control'), 'private, max-age=5, stale-while-revalidate=15');
 });
 
 test('收藏与阅读状态按当前账号隔离，总数只看自己的状态', async () => {
