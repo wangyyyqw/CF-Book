@@ -4,6 +4,7 @@ import { readJsonResponse, responseError, wait } from '/upload-http.js';
 import { openUploadStore, createUploadStore, createMemoryBackend } from '/upload-store.js';
 import { createUploadCenter } from '/upload-manager.js';
 import { formatBytes, formatDuration, formatSpeed } from '/format.js';
+import { buildImportReport, matchesFilter, REPORT_FILTERS } from '/import-report.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -20,6 +21,7 @@ const queueEl = $('upload-queue');
 const logEl = $('log');
 const summaryEl = $('queue-summary');
 const nodes = new Map();
+let activeFilter = '';
 
 function log(text) {
   const li = document.createElement('li');
@@ -100,8 +102,15 @@ const center = createUploadCenter({
   attachCover,
   onLog: log,
   onChange: (task) => {
-    if (task) renderTask(task);
+    if (task) {
+      if (matchesFilter(task, activeFilter)) renderTask(task);
+      else {
+        nodes.get(task.id)?.li.remove();
+        nodes.delete(task.id);
+      }
+    }
     renderSummary();
+    renderReport();
   },
 });
 
@@ -111,6 +120,37 @@ function renderSummary() {
   summaryEl.textContent = tasks.length
     ? `共 ${tasks.length} 本，进行中 ${active} 本`
     : '还没有上传任务，先选择文件。';
+}
+
+const filterButtons = new Map();
+for (const { key, label } of REPORT_FILTERS) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = label;
+  button.addEventListener('click', () => {
+    activeFilter = key;
+    renderAll();
+  });
+  $('report-filters').appendChild(button);
+  filterButtons.set(key, button);
+}
+
+function renderReport() {
+  const tasks = center.list();
+  $('report-panel').hidden = tasks.length === 0;
+  for (const [key, button] of filterButtons) button.classList.toggle('active', key === activeFilter);
+  if (!tasks.length) return;
+
+  const report = buildImportReport(tasks);
+  const counts = [
+    ['成功', report.completed],
+    ['失败', report.failed],
+    ['缺少封面', report.missingCover],
+    ['元数据不完整', report.incompleteMeta],
+  ];
+  $('report-counts').innerHTML = counts
+    .map(([label, value]) => `<li><span>${label}</span><strong>${value} 本</strong></li>`)
+    .join('');
 }
 
 function progressPercent(task) {
@@ -204,7 +244,7 @@ function renderTask(task) {
 }
 
 function renderAll() {
-  const list = center.list();
+  const list = center.list().filter((task) => matchesFilter(task, activeFilter));
   const alive = new Set(list.map((task) => task.id));
   for (const [id, node] of nodes) {
     if (!alive.has(id)) {
@@ -214,6 +254,7 @@ function renderAll() {
   }
   for (const task of list) renderTask(task);
   renderSummary();
+  renderReport();
 }
 
 $('file').addEventListener('change', async (event) => {
