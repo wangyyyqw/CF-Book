@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CF-Book · 标签库管理</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body class="library-page">
+    <header class="topbar library-topbar">
+      <a class="library-brand" href="/library" aria-label="CF-Book 书库">
+        <span class="library-mark">观</span><strong>CF-Book</strong>
+      </a>
+      <details class="library-menu">
+        <summary aria-label="展开导航菜单"><span></span><span></span><span></span></summary>
+        <div class="library-menu-list">
+          <a href="/library">书库</a><a href="/">上传</a><a href="/download">下载</a>
+          <div id="user-area" class="user-area"></div>
+        </div>
+      </details>
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="切换到暗色模式">暗色</button>
+    </header>
+
+    <main class="shell library-shell">
+      <section class="panel">
+        <h2>标签库概览</h2>
+        <div id="tag-stats" class="tag-admin-stats"><span>正在读取标签库…</span></div>
+        <div class="actions-row">
+          <button id="export-tags" type="button">导出 JSON</button>
+          <label class="file-button">导入 JSON
+            <input id="import-tags" type="file" accept="application/json,.json" hidden />
+          </label>
+          <button id="only-unused" type="button">只看从未使用</button>
+          <span id="tag-admin-msg" class="form-msg"></span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>新建标签</h2>
+        <form id="tag-create-form" class="inline-form tag-create-form">
+          <input id="new-tag-name" placeholder="标签名称" maxlength="40" required />
+          <select id="new-tag-dimension" required></select>
+          <input id="new-tag-category" placeholder="分类（默认“其他”）" maxlength="40" />
+          <input id="new-tag-parent" placeholder="父标签 ID（可选）" />
+          <input id="new-tag-aliases" placeholder="别名（逗号分隔）" />
+          <input id="new-tag-description" placeholder="定义说明（可选）" />
+          <button type="submit">新建标签</button>
+          <span id="tag-create-msg" class="form-msg"></span>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h2>合并重复标签</h2>
+        <p class="form-msg">只能合并同一维度下的标签；源标签的书籍、别名与子标签会转到目标标签，源标签随后删除。</p>
+        <form id="tag-merge-form" class="inline-form">
+          <select id="merge-from" required><option value="">源标签（将被删除）</option></select>
+          <select id="merge-to" required><option value="">目标标签（保留）</option></select>
+          <button type="submit">合并</button>
+          <span id="tag-merge-msg" class="form-msg"></span>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h2>标签列表</h2>
+        <div class="tag-list-tools">
+          <input id="tag-search" type="search" placeholder="搜索标签名称、别名或 ID" />
+          <span id="tag-list-note" class="section-note"></span>
+        </div>
+        <table class="tasks" id="tag-table">
+          <thead>
+            <tr>
+              <th>标签</th>
+              <th>维度</th>
+              <th>分类</th>
+              <th>使用</th>
+              <th>状态</th>
+              <th>别名</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <span id="tag-list-msg" class="form-msg"></span>
+      </section>
+    </main>
+
+    <script type="module" src="/nav.js"></script>
+    <script type="module" src="/tags.js"></script>
+  </body>
+</html>
