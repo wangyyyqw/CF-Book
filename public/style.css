@@ -1403,6 +1403,62 @@ body.library-page.library-dark .shell > .panel {
   font-variant-numeric: tabular-nums;
 }
 
+/* 书库统计：总览沿用 report-grid 卡片，分维度列表另起分栏 */
+.report-grid > div {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line);
+  background: var(--control-bg);
+}
+
+.stats-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.stats-block h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.stats-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.stats-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.stats-list li.muted { grid-template-columns: 1fr; }
+
+.stats-list span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-list strong { font-variant-numeric: tabular-nums; }
+
+.stats-list em {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .report-filters {
   display: flex;
   flex-wrap: wrap;

@@ -61,6 +61,14 @@
       </section>
 
       <section class="panel">
+        <h2>书库统计</h2>
+        <p class="form-msg">按格式、语言与标准标签统计书籍数量和占用大小。一本书最多 3 个标准标签，分维度统计时大小会被各标签分别计入。</p>
+        <div id="stats-overview" class="report-grid"></div>
+        <div id="stats-sections" class="stats-sections"></div>
+        <span id="stats-msg" class="form-msg"></span>
+      </section>
+
+      <section class="panel">
         <h2>AI 书名与标签整理</h2>
         <p class="form-msg">分类会先用书名和作者查询公开书目并抽取简介、分类和关键词，再由下方已配置的 AI 清理书名并生成 3 个共享标签；若未配置则使用 Workers AI。不会上传书籍原文件。每日用量按模型 token 估算，外部模型费用以服务商账单为准。</p>
         <div class="ai-usage-grid" id="ai-usage">
