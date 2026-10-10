@@ -434,6 +434,17 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
 
+-- 登录失败限流：按 IP 与用户名维度记录失败次数与锁定截止时间。瞬态安全数据，不纳入备份。
+CREATE TABLE IF NOT EXISTS login_attempts (
+  key          TEXT PRIMARY KEY,
+  attempts     INTEGER NOT NULL DEFAULT 0,
+  first_at     INTEGER NOT NULL DEFAULT 0,
+  locked_until INTEGER NOT NULL DEFAULT 0,
+  updated_at   INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_login_attempts_locked ON login_attempts(locked_until);
+
 -- 扩充哲学与人文非虚构、专业类型小说和网文细分题材；既有图书标签关系不变。
 
 INSERT INTO standard_tags (tag_id, name, dimension, category, parent_id, description, status) VALUES ('PUB_FIELD_0134', '中国古典文学', 'pub_field', '文学与艺术', NULL, '中国古代文学作品、作家、文体与文学传统', 'active'),
