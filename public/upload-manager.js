@@ -303,6 +303,12 @@ export function createUploadCenter({
       task.status = 'completed';
       task.speed = 0;
       onLog(`[${task.filename}] 入库完成，可在“下载”页找到该书`);
+      // 内容哈希命中已有书籍时，提示疑似重复但不影响入库
+      if (done.suspectedDuplicate && done.duplicateOf?.title) {
+        const dupHint = `疑似与《${done.duplicateOf.title}》重复`;
+        task.warning = [task.warning, dupHint].filter(Boolean).join('；');
+        onLog(`[${task.filename}] ${dupHint}`);
+      }
       if (task.cover && task.bookId) {
         try {
           await attachCover(task.bookId, task.cover, signal);

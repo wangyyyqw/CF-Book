@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS books (
 CREATE INDEX IF NOT EXISTS idx_books_title ON books(title);
 CREATE INDEX IF NOT EXISTS idx_books_author ON books(author);
 CREATE INDEX IF NOT EXISTS idx_books_created ON books(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_books_sha256 ON books(sha256);
 
 -- 每个账号各自的评分与阅读状态
 CREATE TABLE IF NOT EXISTS book_user_state (

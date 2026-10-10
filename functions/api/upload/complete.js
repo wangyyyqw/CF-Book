@@ -50,11 +50,23 @@ export async function onRequestPost(context) {
   // 上传完成后自动建立书籍档案
   const existing = await dbGet(env, 'SELECT id FROM books WHERE upload_id = ?', uploadId);
   let bookId;
+  let suspectedDuplicate = null;
   if (!existing) {
     const now = nowSec();
     bookId = crypto.randomUUID();
     const meta = body.meta || {};
     const clean = (v) => String(v || '').trim();
+    // 入库前按内容哈希查重：命中同哈希的其它书籍只提示"疑似重复"，不拦截上传
+    const contentHash = upload.sha256 || sha256;
+    if (contentHash) {
+      const dup = await dbGet(
+        env,
+        'SELECT id, title FROM books WHERE sha256 = ? AND upload_id != ? ORDER BY created_at LIMIT 1',
+        contentHash,
+        uploadId
+      );
+      if (dup) suspectedDuplicate = { id: dup.id, title: dup.title };
+    }
     await dbRun(
       env,
       `INSERT INTO books
@@ -98,5 +110,7 @@ export async function onRequestPost(context) {
     chunkCount: upload.total_chunks,
     bookCreated: true,
     bookId,
+    suspectedDuplicate: Boolean(suspectedDuplicate),
+    duplicateOf: suspectedDuplicate,
   });
 }
