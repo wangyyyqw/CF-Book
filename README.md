@@ -160,8 +160,40 @@ openssl rand -hex 32
 | `BOOK_SEARCH_API_URL` | 可选通用搜索 API 地址，支持 `{query}` 占位符或 `q` 参数。 |
 | `BOOK_SEARCH_API_KEY` | 可选通用搜索 API Key。 |
 | `SEARCH_API_URL` / `SEARCH_API_KEY` | 上述搜索配置的旧名称，只有未设置新名称时才会使用。 |
+| `BACKUP_KEY` | 备份加密口令（PBKDF2 + AES-256-GCM）。未设置时无法生成加密备份，只能显式导出明文。更换或丢失后，已有的加密备份将无法恢复。 |
 
 如果使用自定义 AI Provider，API Key 在服务端以 AES-GCM 加密写入 D1，不会通过配置读取接口返回。
+
+## 备份与恢复
+
+管理员在 `/users` 页面底部可以下载备份、预览数据量并执行恢复，也可以直接调用接口：
+
+```bash
+# 加密备份（默认），需要 BACKUP_KEY
+curl -H "x-admin-token: $ADMIN_TOKEN" \
+  https://cf-book.pages.dev/api/backup/export -o backup.json
+
+# 明文备份，文件内含账号密码哈希与全部分块索引，只保存在可信位置
+curl -H "x-admin-token: $ADMIN_TOKEN" \
+  "https://cf-book.pages.dev/api/backup/export?encrypt=0" -o backup-plain.json
+```
+
+备份固定包含书目、账号、标签、评分与阅读状态，以及 `uploads` / `chunks` 两张表——后者是 Telegram 原文件在 D1 里的索引，和书目必须成对保存，只备份书目会导致恢复后有书却没有原文件。
+
+恢复有两种模式：`merge` 只补齐备份中的数据，`replace` 先清空上述表再按备份重建。恢复过程只写 D1，不会删除或覆盖 Telegram 中的分块，也不会改动 R2 封面；因此恢复后请确认 Telegram 频道里对应的分块仍然存在（可在上传任务中心对单个任务执行“重新校验”）。恢复是幂等的，中途失败重新执行同一份备份即可收敛。
+
+### 定时导出
+
+Cloudflare Pages 不支持 Cron Triggers，定时导出由 `workers/backup-cron` 这个独立 Worker 完成：它按计划调用 `/api/backup/export`，把加密备份写入 R2 的 `backups/` 前缀，并只保留最近 `KEEP_BACKUPS` 份。
+
+```bash
+cd workers/backup-cron
+# 先把 wrangler.toml 里的 CF_BOOK_URL 与 R2 bucket 换成真实值
+npx wrangler secret put ADMIN_TOKEN
+npx wrangler deploy
+# 手动触发一次验证配置
+curl -H "x-admin-token: $ADMIN_TOKEN" https://cf-book-backup-cron.<你的子域>.workers.dev
+```
 
 ## 部署
 

@@ -294,3 +294,111 @@ $('ai-reclassify-all').addEventListener('click', () => {
 $('provider-discover').addEventListener('click', discoverProviderModels);
 $('provider-form').addEventListener('submit', saveProviderConfig);
 $('provider-delete').addEventListener('click', deleteProviderConfig);
+
+// ---- 备份与恢复 ----
+
+const BACKUP_TABLE_LABELS = {
+  users: '账号',
+  books: '书目',
+  uploads: '上传任务',
+  chunks: 'Telegram 分块索引',
+  book_user_state: '评分与阅读状态',
+  tag_dimensions: '标签维度',
+  standard_tags: '标准标签',
+  standard_tag_aliases: '标签别名',
+  book_standard_tags: '书籍标准标签',
+  tags: '自定义标签',
+  book_tags: '书籍自定义标签',
+};
+
+let loadedBackup = null;
+
+function setBackupReady(ready) {
+  $('backup-preview').disabled = !ready;
+  $('backup-restore').disabled = !ready;
+}
+
+function renderBackupSummary(summary) {
+  const rows = Object.entries(summary)
+    .map(([name, { incoming, current }]) =>
+      `<li><span>${escapeHtml(BACKUP_TABLE_LABELS[name] || name)}</span><strong>备份 ${incoming} / 当前 ${current}</strong></li>`)
+    .join('');
+  $('backup-summary').innerHTML = rows ? `<ul class="backup-grid">${rows}</ul>` : '';
+}
+
+$('backup-export').addEventListener('click', () => {
+  location.href = '/api/backup/export';
+});
+
+$('backup-export-plain').addEventListener('click', () => {
+  if (!confirm('明文备份包含账号密码哈希和全部分块索引，请只保存在可信位置。继续下载吗？')) return;
+  location.href = '/api/backup/export?encrypt=0';
+});
+
+$('backup-file').addEventListener('change', async (event) => {
+  const file = event.target.files[0];
+  event.target.value = '';
+  loadedBackup = null;
+  setBackupReady(false);
+  $('backup-summary').innerHTML = '';
+  if (!file) return;
+  try {
+    loadedBackup = JSON.parse(await file.text());
+    $('backup-msg').textContent = `已读取 ${file.name}，可先预览数据量。`;
+    setBackupReady(true);
+  } catch (error) {
+    $('backup-msg').textContent = `备份文件不是有效的 JSON：${error.message}`;
+  }
+});
+
+$('backup-preview').addEventListener('click', async () => {
+  $('backup-preview').disabled = true;
+  $('backup-msg').textContent = '正在读取备份内容…';
+  try {
+    const res = await api('/api/backup/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ backup: loadedBackup }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      $('backup-msg').textContent = `预览失败：${data.error || res.status}`;
+      return;
+    }
+    renderBackupSummary(data.summary);
+    $('backup-msg').textContent = `备份创建于 ${new Date(data.createdAt * 1000).toLocaleString()}，共 ${data.total} 条记录。`;
+  } catch (error) {
+    $('backup-msg').textContent = `预览失败：${error.message}`;
+  } finally {
+    $('backup-preview').disabled = false;
+  }
+});
+
+$('backup-restore').addEventListener('click', async () => {
+  const mode = $('backup-mode').value;
+  const hint = mode === 'replace'
+    ? '将先清空书目、账号、标签与分块索引，再按备份重建。'
+    : '只补齐备份中的数据，不删除现有内容。';
+  if (!confirm(`${hint}\n恢复只写数据库，不会改动 Telegram 原文件。确定继续吗？`)) return;
+
+  $('backup-restore').disabled = true;
+  $('backup-msg').textContent = '正在恢复…';
+  try {
+    const res = await api('/api/backup/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ backup: loadedBackup, mode }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      $('backup-msg').textContent = `恢复失败：${data.error || res.status}`;
+      return;
+    }
+    $('backup-msg').textContent = `恢复完成（${mode === 'replace' ? '覆盖' : '合并'}），共写入 ${Object.values(data.restored).reduce((a, b) => a + b, 0)} 条记录。`;
+    await load();
+  } catch (error) {
+    $('backup-msg').textContent = `恢复失败：${error.message}`;
+  } finally {
+    $('backup-restore').disabled = false;
+  }
+});

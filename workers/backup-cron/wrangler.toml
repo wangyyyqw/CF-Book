@@ -1,0 +1,18 @@
+name = "cf-book-backup-cron"
+main = "index.js"
+compatibility_date = "2026-09-01"
+
+# 每天 03:17（UTC）导出一次加密备份到 R2
+[triggers]
+crons = ["17 3 * * *"]
+
+[vars]
+# 填你自己的 Pages 站点地址，例如 https://cf-book.pages.dev
+CF_BOOK_URL = "https://REPLACE_WITH_YOUR_PAGES_DOMAIN"
+KEEP_BACKUPS = "14"
+
+[[r2_buckets]]
+binding = "BACKUPS"
+bucket_name = "REPLACE_WITH_YOUR_R2_BUCKET_NAME"
+
+# ADMIN_TOKEN 用 `wrangler secret put ADMIN_TOKEN` 配置，不要写进仓库
