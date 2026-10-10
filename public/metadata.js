@@ -1,4 +1,5 @@
 import { strFromU8, inflateSync } from './vendor/fflate.js';
+import { readKindleMetadata, readKindleCover } from './kindle.js';
 
 // —— zip 按需读取（不整读文件，兼容浏览器 File 与 Node Buffer/Uint8Array） ——
 
@@ -317,40 +318,6 @@ export function pdfMeta(bytes) {
   }
 }
 
-// MOBI/AZW3: 读取 EXTH 头里的作者(title 从 PDB 名字来)
-export function mobiMeta(bytes) {
-  try {
-    const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-    if (u8.length < 100) return null;
-    // PDB header: 名称在 offset 0x54 (84)，32字节
-    const pdbName = new TextDecoder('latin1').decode(u8.subarray(84, 116)).replace(/\0+$/, '').trim();
-    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
-    const exthMagic = 0x45585448; // 'EXTH'
-    let author = '';
-    let title = pdbName.replace(/\.mobi$/i, '').replace(/\.azw3?$/i, '');
-    // 找 EXTH 记录（在 PalmDOC header 后），作者 type=100
-    for (let i = 0; i < Math.min(u8.length - 12, 200 * 1024); i += 2) {
-      if (dv.getUint32(i) === exthMagic) {
-        const len = dv.getUint32(i + 4);
-        const end = Math.min(i + 8 + len, u8.length);
-        let p = i + 12;
-        while (p + 8 <= end) {
-          const type = dv.getUint32(p);
-          const size = dv.getUint32(p + 4);
-          if (type === 100 && size > 8) {
-            author = new TextDecoder('utf-8').decode(u8.subarray(p + 8, Math.min(p + size, end))).replace(/\0+$/, '').trim();
-          }
-          p += size;
-        }
-        break;
-      }
-    }
-    return { title, author };
-  } catch (e) {
-    return null;
-  }
-}
-
 // 统一入口：给定 File 对象（支持 slice 流式读取），返回元数据
 export async function extractFileMetadata(file, fileName) {
   const ext = (String(fileName).match(/\.([A-Za-z0-9]+)$/) || [])[1]?.toLowerCase() || '';
@@ -359,10 +326,11 @@ export async function extractFileMetadata(file, fileName) {
 
   if (ext === 'epub') {
     meta = await epubMeta(file);
-  } else if (ext === 'pdf' || ext === 'mobi' || ext === 'azw3' || ext === 'azw') {
-    // PDF/MOBI 元数据都在文件头部，读前 2MB 即可
-    const head = await readRange(file, 0, Math.min(2 * 1024 * 1024, file.size));
-    meta = ext === 'pdf' ? pdfMeta(head) : mobiMeta(head);
+  } else if (['mobi', 'azw3', 'azw'].includes(ext)) {
+    meta = await readKindleMetadata(file);
+  } else if (ext === 'pdf') {
+    const head = await readRange(file, 0, Math.min(2 * 1024 * 1024, file.size ?? file.byteLength));
+    meta = pdfMeta(head);
   }
 
   const title = (meta?.title && meta.title.trim()) || inferred.title || String(fileName).replace(/\.[^.]+$/, '');
@@ -376,13 +344,15 @@ export async function extractFileMetadata(file, fileName) {
     isbn: meta?.isbn || '',
     description: meta?.description || '',
     date: meta?.date || '',
+    warning: meta?.warning || '',
     _meta: meta,
   };
 }
 
-// 统一入口：提取 EPUB 封面（流式）
+// 统一入口：按需提取 EPUB、MOBI 与 AZW3 封面。
 export async function extractCoverFromFile(file, fileName) {
   const ext = (String(fileName).match(/\.([A-Za-z0-9]+)$/) || [])[1]?.toLowerCase() || '';
+  if (['mobi', 'azw3', 'azw'].includes(ext)) return readKindleCover(file);
   if (ext !== 'epub') return null;
   const meta = await epubMeta(file);
   if (!meta) return null;

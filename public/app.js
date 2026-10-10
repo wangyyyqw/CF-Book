@@ -86,7 +86,11 @@ async function attachCover(bookId, cover, signal) {
     // 压缩失败时直接上传原图
   }
   const form = new FormData();
-  form.append('file', new Blob([bytes], { type: 'image/webp' }), 'cover.webp');
+  const uploadMime = bytes === cover.bytes ? cover.mime : 'image/webp';
+  const uploadName = uploadMime === 'image/png' ? 'cover.png'
+    : uploadMime === 'image/jpeg' ? 'cover.jpg'
+      : uploadMime === 'image/gif' ? 'cover.gif' : 'cover.webp';
+  form.append('file', new Blob([bytes], { type: uploadMime }), uploadName);
   const res = await api(`/api/books/${bookId}/cover`, { method: 'POST', body: form, signal });
   if (!res.ok) throw new Error('封面上传失败');
 }
@@ -207,6 +211,7 @@ function describeMeta(task) {
   } else if (task.verify && !task.verify.checked) {
     parts.push('校验未完成');
   }
+  if (task.warning) parts.push(`提示：${task.warning}`);
   if (task.error) parts.push(task.error);
   return parts.join(' · ');
 }

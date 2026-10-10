@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { zipSync, strToU8 } from '../public/vendor/fflate.js';
-import { extractCoverFromFile } from '../public/metadata.js';
+import { extractCoverFromFile, extractFileMetadata } from '../public/metadata.js';
+import { kindleFile, kindleHeader, palmDatabase, kindleCover, numberRecord } from './helpers/kindle-fixtures.mjs';
 
 function epubWithExternalCover() {
   const files = {
@@ -62,4 +63,109 @@ test('封面 href 使用 ../ 返回 EPUB 压缩包根目录时仍可提取', asy
   const cover = await extractCoverFromFile(new File([zipSync(files)], 'parent-cover.epub'), 'parent-cover.epub');
   assert.equal(cover?.mime, 'image/jpeg');
   assert.deepEqual(cover?.bytes, expected);
+});
+
+test('MOBI 按记录目录定位头部，优先使用 EXTH 的中文书名而非数据库内部名称', async () => {
+  const bytes = kindleFile();
+  const meta = await extractFileMetadata(new File([bytes], '错误文件名.mobi'), '错误文件名.mobi');
+  assert.equal(meta.title, '正确的中文书名');
+  assert.equal(meta.author, '测试作者');
+  assert.equal(meta.publisher, '测试出版社');
+  assert.equal(meta.description, '测试简介');
+  assert.equal(meta.language, 'zh-CN');
+  assert.equal(meta.isbn, '9781234567890');
+  assert.equal((await extractFileMetadata(bytes, 'wrong.mobi')).title, meta.title);
+});
+
+test('没有 EXTH 更新书名时读取完整书名，不采用截断的 PDB 名称', async () => {
+  const bytes = kindleFile({ title: '', fullTitle: '超过三十二字节的完整中文书名也不能被截断' });
+  const meta = await extractFileMetadata(bytes, 'wrong.mobi');
+  assert.equal(meta.title, '超过三十二字节的完整中文书名也不能被截断');
+});
+
+test('MOBI 元数据遵循 Windows-1252 编码而非强行 UTF-8', async () => {
+  const bytes = kindleFile({ title: 'Café', author: 'André', encoding: 1252 });
+  const meta = await extractFileMetadata(new File([bytes], 'wrong.mobi'), 'wrong.mobi');
+  assert.equal(meta.title, 'Café');
+  assert.equal(meta.author, 'André');
+});
+
+test('TEXTREAD 记录也按 Kindle 记录目录读取，不把内部二进制当成书名', async () => {
+  const bytes = kindleFile({ ident: 'TEXTREAD' });
+  const meta = await extractFileMetadata(new File([bytes], 'wrong.mobi'), 'wrong.mobi');
+  assert.equal(meta.title, '正确的中文书名');
+});
+
+for (const [name, version] of [['book.mobi', 6], ['book.azw3', 8], ['book.azw', 6]]) {
+  test(`${name} 根据首图索引与封面偏移精读指定图片记录`, async () => {
+    const cover = await extractCoverFromFile(new File([kindleFile({ version })], name), name);
+    assert.equal(cover?.mime, 'image/png');
+    assert.deepEqual(cover?.bytes, kindleCover);
+  });
+}
+
+test('大文件封面在 2MB 以外时仍提取，且不读取正文或整书', async () => {
+  const header = kindleHeader();
+  const bytes = palmDatabase([header.bytes, new Uint8Array(3 * 1024 * 1024), new Uint8Array([1]), kindleCover]);
+  const ranges = [];
+  const file = {
+    size: bytes.length,
+    arrayBuffer() { throw new Error('禁止整读'); },
+    slice(start, end) {
+      ranges.push([start, end]);
+      return new Blob([bytes.subarray(start, end)]);
+    },
+  };
+  assert.deepEqual((await extractCoverFromFile(file, 'large.azw3'))?.bytes, kindleCover);
+  assert.equal((await extractFileMetadata(file, 'large.azw3')).title, '正确的中文书名');
+  assert.ok(ranges.reduce((total, [start, end]) => total + end - start, 0) < 16 * 1024, '只读取目录、元数据头和封面');
+});
+
+test('双格式文件读取 KF8 的更新书名，封面沿用共享的 MOBI7 图片基准', async () => {
+  const legacy = kindleHeader({ title: '旧书名', firstImage: 2, extraRecords: [numberRecord(121, 5)] });
+  const modern = kindleHeader({ version: 8, title: 'KF8 新书名', firstImage: 0xffffffff, coverOffset: 1 });
+  const bytes = palmDatabase([
+    legacy.bytes, new Uint8Array([1]), new Uint8Array([2]), kindleCover,
+    new TextEncoder().encode('BOUNDARY'), modern.bytes,
+  ]);
+  assert.equal((await extractFileMetadata(new File([bytes], 'dual.mobi'), 'dual.mobi')).title, 'KF8 新书名');
+  assert.deepEqual((await extractCoverFromFile(bytes, 'dual.mobi'))?.bytes, kindleCover);
+});
+
+test('无有效封面声明时不把任意正文图片当封面', async () => {
+  const bytes = kindleFile({ coverOffset: null });
+  assert.equal(await extractCoverFromFile(bytes, 'no-cover.mobi'), null);
+});
+
+test('越界或非图片封面记录不会导致导入失败', async () => {
+  for (const coverOffset of [99, 0]) {
+    const file = new File([kindleFile({ coverOffset })], 'bad-cover.azw3');
+    assert.equal(await extractCoverFromFile(file, file.name), null);
+    assert.equal((await extractFileMetadata(file, file.name)).title, '正确的中文书名');
+  }
+});
+
+test('非 MOBI 和截断记录目录回退文件名，不接受二进制乱码书名', async () => {
+  for (const bytes of [new Uint8Array(512).fill(0x61), kindleFile().subarray(0, 90)]) {
+    const meta = await extractFileMetadata(new File([bytes], '可信书名.mobi'), '可信书名.mobi');
+    assert.equal(meta.title, '可信书名');
+    assert.equal(meta.author, '');
+    assert.equal(await extractCoverFromFile(bytes, 'bad.mobi'), null);
+  }
+});
+
+test('损坏 EXTH 的零长度记录及时退出，并保留可信完整书名', async () => {
+  const bytes = kindleFile({ fullTitle: '完整可信书名' });
+  const view = new DataView(bytes.buffer);
+  const recordStart = view.getUint32(78);
+  view.setUint32(recordStart + 16 + 232 + 12 + 4, 0);
+  assert.equal((await extractFileMetadata(new File([bytes], 'broken.mobi'), 'broken.mobi')).title, '完整可信书名');
+});
+
+test('DRM 文件不破解，保留可读取的元数据但不提取受保护封面', async () => {
+  const bytes = kindleFile({ encryption: 2 });
+  const meta = await extractFileMetadata(new File([bytes], 'protected.azw3'), 'protected.azw3');
+  assert.equal(meta.title, '正确的中文书名');
+  assert.match(meta._meta?.warning || '', /DRM|加密/);
+  assert.equal(await extractCoverFromFile(bytes, 'protected.azw3'), null);
 });

@@ -6,7 +6,7 @@ const DEFAULT_HASH_LIMIT = 1024 * 1024 * 1024;
 const SPEED_SMOOTHING = 0.4;
 
 const RECORD_FIELDS = [
-  'id', 'uploadId', 'filename', 'size', 'mime', 'sha256', 'meta', 'hasCover', 'status', 'error',
+  'id', 'uploadId', 'filename', 'size', 'mime', 'sha256', 'meta', 'warning', 'hasCover', 'status', 'error',
   'chunkSize', 'totalChunks', 'doneChunks', 'uploadedBytes', 'totalBytes', 'failedChunks',
   'bookId', 'verify', 'createdAt', 'updatedAt',
 ];
@@ -108,6 +108,7 @@ export function createUploadCenter({
       mime: file.type || 'application/octet-stream',
       sha256: '',
       meta: null,
+      warning: '',
       hasCover: null,
       status: 'pending',
       error: '',
@@ -129,11 +130,13 @@ export function createUploadCenter({
     };
   }
 
-  async function safeExtract(fn) {
+  async function safeExtract(fn, onError = () => {}) {
     try {
       return await fn();
     } catch (error) {
-      onLog(`元数据提取失败（不影响上传）：${messageOf(error)}`);
+      const message = messageOf(error);
+      onError(message);
+      onLog(`元数据提取失败（不影响上传）：${message}`);
       return null;
     }
   }
@@ -212,13 +215,25 @@ export function createUploadCenter({
         onLog(`[${task.filename}] 超过 1GB，跳过整书哈希，分块哈希仍会校验`);
       }
       if (!task.meta) {
-        task.meta = (await safeExtract(() => extractMetadata(file, file.name))) || {};
+        let errorMessage = '';
+        task.meta = (await safeExtract(
+          () => extractMetadata(file, file.name),
+          (message) => { errorMessage = message; },
+        )) || {};
+        task.warning = [task.warning, task.meta.warning, errorMessage && `元数据识别失败：${errorMessage}`]
+          .filter(Boolean).join('；');
         if (task.meta.title) onLog(`[${task.filename}] 识别书名：${task.meta.title}`);
         await persist(task);
       }
-      if (task.hasCover == null) {
-        task.cover = await safeExtract(() => extractCover(file, file.name));
+      // 暂停、刷新或分块失败后，封面 bytes 不在任务记录里；未入库前必须重新从本地文件提取。
+      if (!task.bookId) {
+        let errorMessage = '';
+        task.cover = await safeExtract(
+          () => extractCover(file, file.name),
+          (message) => { errorMessage = message; },
+        );
         task.hasCover = Boolean(task.cover?.bytes || task.cover?.url);
+        if (errorMessage) task.warning = [task.warning, `封面识别失败：${errorMessage}`].filter(Boolean).join('；');
         await persist(task);
       }
 
@@ -345,6 +360,7 @@ export function createUploadCenter({
         const task = {
           ...record,
           failedChunks: record.failedChunks || [],
+          warning: record.warning || '',
           cover: null,
           speed: 0,
           lastTick: null,

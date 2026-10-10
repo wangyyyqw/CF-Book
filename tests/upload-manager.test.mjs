@@ -22,6 +22,10 @@ function fakeFile(name = 'book.epub', size = 25) {
   };
 }
 
+function fakeCover() {
+  return { bytes: new Uint8Array([1, 2, 3]), mime: 'image/png' };
+}
+
 // 模拟服务端：记录每本书已上传的分块，便于验证断点续传只重发失败分块。
 function makeApi({ chunkSize = 10, preUploaded = [], failChunks = new Set(), holdChunk = null } = {}) {
   const uploaded = new Set(preUploaded);
@@ -103,6 +107,58 @@ test('上传成功后自动校验 Telegram 分块并记录结果', async () => {
   assert.equal(server.calls.complete, 1);
   assert.equal(server.calls.verify, 1);
   assert.equal(task.verify.checked, true);
+});
+
+test('MOBI 元数据和封面会传给入库接口并保存', async () => {
+  const body = [];
+  const coverCalls = [];
+  const { store, server } = makeCenter();
+  const api = server.api;
+  const wrapped = async (url, options = {}) => {
+    if (url === '/api/upload/init' || url === '/api/upload/complete') body.push(JSON.parse(options.body));
+    return api(url, options);
+  };
+  const replacement = createUploadCenter({
+    store,
+    api: wrapped,
+    readJsonResponse,
+    responseError,
+    hashFile: async () => 'a'.repeat(64),
+    wait: async () => {},
+    chunkRetries: 1,
+    concurrency: 2,
+    extractMetadata: async () => ({ title: '正确书名', author: '作者', format: 'mobi', warning: '' }),
+    extractCover: async () => fakeCover(),
+    attachCover: async (bookId, cover) => coverCalls.push({ bookId, cover }),
+  });
+  await replacement.addFiles([fakeFile('错误文件名.mobi')]);
+  replacement.start(replacement.list()[0].id);
+  await replacement.whenIdle();
+  assert.equal(body[0].meta.title, '正确书名');
+  assert.equal(body[1].meta.author, '作者');
+  assert.deepEqual(coverCalls[0], { bookId: 'book1', cover: fakeCover() });
+});
+
+test('暂停后重新继续会重新提取封面，避免任务记录只剩 hasCover 而无法挂接', async () => {
+  let extracts = 0;
+  let attached = 0;
+  const { center, server } = makeCenter({ api: { holdChunk: 1 }, options: {
+    extractMetadata: async () => ({ title: '书名' }),
+    extractCover: async () => { extracts += 1; return fakeCover(); },
+    attachCover: async () => { attached += 1; },
+  } });
+  await center.addFiles([fakeFile('book.mobi')]);
+  const id = center.list()[0].id;
+  center.start(id);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  center.pause(id);
+  await center.whenIdle();
+  center.start(id);
+  await center.whenIdle();
+  assert.equal(extracts, 2);
+  assert.equal(attached, 1);
+  assert.equal(center.get(id).status, 'completed');
+  assert.equal(server.calls.init, 2);
 });
 
 test('分块失败不中断整本书，重试时只补发失败的分块', async () => {
