@@ -18,6 +18,18 @@ export async function onRequestGet(context) {
   const limit = Math.min(requestedLimit, 100);
   const offset = Math.max(Number(url.searchParams.get('offset')) || 0, 0);
 
+  // 排序白名单：键映射到可排序的列或 SELECT 中已有的聚合别名，杜绝任意列注入
+  const SORT_COLUMNS = {
+    time: 'b.created_at',
+    title: 'b.title',
+    author: 'b.author',
+    rating: 'rating_avg',
+    size: 'b.file_size',
+  };
+  const sortKey = (url.searchParams.get('sort') || '').trim();
+  const sortColumn = SORT_COLUMNS[sortKey] || SORT_COLUMNS.time;
+  const sortDir = (url.searchParams.get('dir') || '').trim().toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+
   // my_* 是当前账号自己的评分/状态，rating_avg 是所有人打分的平均值
   const from = `
     FROM books b
@@ -70,7 +82,7 @@ export async function onRequestGet(context) {
       COALESCE(mine.status, 'unread') AS my_status,
       COALESCE(mine.is_favorite, 0) AS my_favorite`}
      ${from}${whereSql}
-     ORDER BY ${recommended ? 'RANDOM()' : 'b.created_at DESC, b.id DESC'}
+     ORDER BY ${recommended ? 'RANDOM()' : `${sortColumn} ${sortDir}, b.id DESC`}
      LIMIT ? OFFSET ?`,
     user.id,
     ...filters,

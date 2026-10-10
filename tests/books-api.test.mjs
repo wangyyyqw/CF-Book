@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import { onRequestGet } from '../functions/api/books.js';
 import { createD1 } from './helpers/d1.mjs';
 
-function addBook(db, { id, title, author = '', created, description = '' }) {
+function addBook(db, { id, title, author = '', created, description = '', fileSize = 0 }) {
   db.exec(
     `INSERT INTO books
        (id, upload_id, title, author, description, cover, format, isbn, publisher, language,
         file_name, file_size, sha256, created_by, created_at, updated_at)
      VALUES ('${id}', NULL, '${title}', '${author}', '${description}', '', 'epub', '', '', '',
-        '', 0, '', 'admin', ${created}, ${created})`
+        '', ${fileSize}, '', 'admin', ${created}, ${created})`
   );
 }
 
@@ -213,4 +213,87 @@ test('收藏与阅读状态按当前账号隔离，总数只看自己的状态',
   assert.equal(all.books.find((b) => b.id === 'b1').my_rating, 9);
   assert.equal(all.books.find((b) => b.id === 'b1').rating_avg, 9);
   assert.equal(all.books.find((b) => b.id === 'b2').my_rating, 0, '别人的评分不算成我的');
+});
+
+test('按书名升降序排序', async () => {
+  const env = makeEnv();
+  addBook(env.DB, { id: 'b1', title: 'Charlie', created: 1 });
+  addBook(env.DB, { id: 'b2', title: 'Alpha', created: 2 });
+  addBook(env.DB, { id: 'b3', title: 'Bravo', created: 3 });
+
+  const asc = await list(env, '?sort=title&dir=asc');
+  assert.deepEqual(asc.books.map((b) => b.title), ['Alpha', 'Bravo', 'Charlie']);
+
+  const desc = await list(env, '?sort=title&dir=desc');
+  assert.deepEqual(desc.books.map((b) => b.title), ['Charlie', 'Bravo', 'Alpha']);
+});
+
+test('按作者升降序排序', async () => {
+  const env = makeEnv();
+  addBook(env.DB, { id: 'b1', title: '书1', author: '王五', created: 1 });
+  addBook(env.DB, { id: 'b2', title: '书2', author: 'Adams', created: 2 });
+  addBook(env.DB, { id: 'b3', title: '书3', author: 'Brown', created: 3 });
+
+  const asc = await list(env, '?sort=author&dir=asc');
+  assert.deepEqual(asc.books.map((b) => b.id), ['b2', 'b3', 'b1']);
+
+  const desc = await list(env, '?sort=author&dir=desc');
+  assert.deepEqual(desc.books.map((b) => b.id), ['b1', 'b3', 'b2']);
+});
+
+test('按文件大小升降序排序', async () => {
+  const env = makeEnv();
+  addBook(env.DB, { id: 'b1', title: '书1', created: 1, fileSize: 300 });
+  addBook(env.DB, { id: 'b2', title: '书2', created: 2, fileSize: 100 });
+  addBook(env.DB, { id: 'b3', title: '书3', created: 3, fileSize: 200 });
+
+  const asc = await list(env, '?sort=size&dir=asc');
+  assert.deepEqual(asc.books.map((b) => b.id), ['b2', 'b3', 'b1']);
+
+  const desc = await list(env, '?sort=size&dir=desc');
+  assert.deepEqual(desc.books.map((b) => b.id), ['b1', 'b3', 'b2']);
+});
+
+test('按评分排序，评分从高到低，无人评分的排在后面', async () => {
+  const env = makeEnv();
+  for (let i = 1; i <= 3; i++) addBook(env.DB, { id: `b${i}`, title: `书${i}`, created: i });
+  env.DB.exec(
+    `INSERT INTO book_user_state (book_id, user_id, rating, status, is_favorite, updated_at)
+     VALUES ('b1', 'u1', 6, 'read', 0, 1), ('b3', 'u1', 9, 'read', 0, 1)`
+  );
+
+  const desc = await list(env, '?sort=rating&dir=desc');
+  assert.deepEqual(desc.books.map((b) => b.id), ['b3', 'b1', 'b2'], '高分在前，未评分殿后');
+
+  const asc = await list(env, '?sort=rating&dir=asc');
+  // 未评分 rating_avg 为 NULL，升序时 SQLite 把 NULL 视为最小，排在最前
+  assert.deepEqual(asc.books.map((b) => b.id), ['b2', 'b1', 'b3']);
+});
+
+test('按时间升降序排序', async () => {
+  const env = makeEnv();
+  for (let i = 1; i <= 3; i++) addBook(env.DB, { id: `b${i}`, title: `书${i}`, created: i });
+
+  const asc = await list(env, '?sort=time&dir=asc');
+  assert.deepEqual(asc.books.map((b) => b.id), ['b1', 'b2', 'b3']);
+
+  const desc = await list(env, '?sort=time&dir=desc');
+  assert.deepEqual(desc.books.map((b) => b.id), ['b3', 'b2', 'b1']);
+});
+
+test('非法排序字段回落到最新上传倒序', async () => {
+  const env = makeEnv();
+  for (let i = 1; i <= 3; i++) addBook(env.DB, { id: `b${i}`, title: `书${i}`, created: i });
+
+  const injected = await list(env, '?sort=b.id;DROP%20TABLE%20books&dir=up');
+  assert.deepEqual(injected.books.map((b) => b.id), ['b3', 'b2', 'b1'], '未知排序键回落 time-desc');
+});
+
+test('推荐分支忽略排序参数，仍随机返回', async () => {
+  const env = makeEnv();
+  for (let i = 1; i <= 12; i++) addBook(env.DB, { id: `r${i}`, title: `推荐${i}`, created: i });
+
+  const data = await list(env, '?recommended=1&sort=title&dir=asc&limit=5');
+  assert.equal(data.books.length, 5);
+  assert.ok(data.books.every((book) => /^r(?:[1-9]|1[0-2])$/.test(book.id)));
 });

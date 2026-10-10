@@ -73,6 +73,18 @@
         <select id="shelf-filter" aria-label="自定义书架">
           <option value="">全部书架</option>
         </select>
+        <select id="sort" aria-label="排序方式">
+          <option value="time-desc">最新上传</option>
+          <option value="time-asc">最早上传</option>
+          <option value="title-asc">书名 A→Z</option>
+          <option value="title-desc">书名 Z→A</option>
+          <option value="author-asc">作者 A→Z</option>
+          <option value="author-desc">作者 Z→A</option>
+          <option value="rating-desc">评分从高到低</option>
+          <option value="rating-asc">评分从低到高</option>
+          <option value="size-desc">文件从大到小</option>
+          <option value="size-asc">文件从小到大</option>
+        </select>
       </section>
       <div id="books" class="books"></div>
       <nav class="pagination" aria-label="书库分页">
