@@ -31,6 +31,19 @@
           <span id="count"></span>
         </div>
         <p class="library-intro">一架旧书，半窗灯火。这里停着读过的、想读的，与舍不得读完的。</p>
+        <details class="shelf-manager">
+          <summary>管理书架</summary>
+          <form id="shelf-create" class="shelf-create">
+            <input id="shelf-name" maxlength="24" placeholder="新书架名称（最多 24 字）" />
+            <select id="shelf-scope">
+              <option value="personal">个人书架</option>
+              <option value="shared">共享书架（仅管理员）</option>
+            </select>
+            <button type="submit">新建书架</button>
+            <span id="shelf-create-msg" class="form-msg"></span>
+          </form>
+          <ul id="shelf-list" class="shelf-list"></ul>
+        </details>
       </section>
       <section class="recommend-section" aria-labelledby="recommend-title">
         <div class="section-heading">
@@ -56,6 +69,9 @@
         </select>
         <select id="tag-filter" aria-label="标签分类">
           <option value="">全部标签</option>
+        </select>
+        <select id="shelf-filter" aria-label="自定义书架">
+          <option value="">全部书架</option>
         </select>
       </section>
       <div id="books" class="books"></div>

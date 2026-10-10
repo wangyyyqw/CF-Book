@@ -35,6 +35,16 @@ export async function onRequestGet(context) {
   book.rating_avg = scored.length
     ? Math.round((scored.reduce((sum, s) => sum + s.rating, 0) / scored.length) * 10) / 10
     : 0;
+
+  // 当前账号能看到的、包含这本书的书架，供详情页勾选
+  const shelfRows = await dbAll(
+    env,
+    `SELECT sb.shelf_id FROM shelf_books sb JOIN shelves s ON s.id = sb.shelf_id
+      WHERE sb.book_id = ? AND (s.scope = 'shared' OR s.owner = ?)`,
+    params.id,
+    me.username
+  );
+  book.shelf_ids = shelfRows.map((row) => row.shelf_id);
   return json({ ok: true, book });
 }
 

@@ -1,4 +1,4 @@
-import { api } from '/api.js';
+import { api, loadMe } from '/api.js';
 const $ = (id) => document.getElementById(id);
 const booksEl = $('books');
 const searchEl = $('search');
@@ -8,9 +8,15 @@ const previousEl = $('previous-page');
 const nextEl = $('next-page');
 const pageIndicator = $('page-indicator');
 const tagFilterEl = $('tag-filter');
+const shelfFilterEl = $('shelf-filter');
 const recommendEl = $('recommend-books');
 const recommendNote = $('recommend-note');
 const refreshRecommendations = $('refresh-recommendations');
+const shelfCreateForm = $('shelf-create');
+const shelfNameEl = $('shelf-name');
+const shelfScopeEl = $('shelf-scope');
+const shelfCreateMsg = $('shelf-create-msg');
+const shelfListEl = $('shelf-list');
 
 const STATUS_LABEL = { unread: '未读', reading: '在读', read: '已读', favorite: '收藏' };
 const STATUS_CLASS = { unread: 's-unread', reading: 's-reading', read: 's-read', favorite: 's-fav' };
@@ -18,6 +24,8 @@ const STATUS_CLASS = { unread: 's-unread', reading: 's-reading', read: 's-read',
 let page = 1;
 let pageSize = 24;
 let requestId = 0;
+let me = null;
+let shelves = [];
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -98,6 +106,46 @@ async function loadTags() {
   }
 }
 
+// 共享书架只有管理员能改名/删除，个人书架只有本人能动，与后端权限保持一致
+function canManage(shelf) {
+  if (!me) return false;
+  if (shelf.scope === 'personal') return shelf.owner === me.username;
+  return me.role === 'admin';
+}
+
+function renderShelves() {
+  const current = shelfFilterEl.value;
+  shelfFilterEl.innerHTML = '<option value="">全部书架</option>' +
+    shelves.map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)}（${s.book_count}）</option>`).join('');
+  if (shelves.some((s) => s.id === current)) shelfFilterEl.value = current;
+
+  if (!shelves.length) {
+    shelfListEl.innerHTML = '<li class="muted">还没有书架，新建一个来整理书籍。</li>';
+    return;
+  }
+  shelfListEl.innerHTML = shelves.map((s) => {
+    const scope = s.scope === 'personal' ? '个人' : '共享';
+    const actions = canManage(s)
+      ? `<button type="button" data-action="rename" data-id="${escapeHtml(s.id)}">改名</button>
+         <button type="button" data-action="delete" data-id="${escapeHtml(s.id)}">删除</button>`
+      : '';
+    return `<li class="shelf-item">
+        <span class="shelf-scope">${scope}</span>
+        <button type="button" class="shelf-name" data-action="filter" data-id="${escapeHtml(s.id)}">${escapeHtml(s.name)}</button>
+        <span class="shelf-count">${s.book_count} 本</span>
+        <span class="shelf-actions">${actions}</span>
+      </li>`;
+  }).join('');
+}
+
+async function loadShelves() {
+  const res = await api('/api/shelves');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) return;
+  shelves = data.shelves || [];
+  renderShelves();
+}
+
 async function load({ reset = false } = {}) {
   if (reset) {
     page = 1;
@@ -111,6 +159,7 @@ async function load({ reset = false } = {}) {
   if (q) params.set('q', q);
   if (statusEl.value) params.set('status', statusEl.value);
   if (tagFilterEl.value) params.set('tag', tagFilterEl.value);
+  if (shelfFilterEl.value) params.set('shelf', shelfFilterEl.value);
   params.set('limit', String(pageSize));
   params.set('offset', String((page - 1) * pageSize));
 
@@ -128,7 +177,7 @@ async function load({ reset = false } = {}) {
 
   if (!data.books.length && page === 1) {
     countEl.textContent = '';
-    booksEl.innerHTML = '<p class="empty">书库还没有书，去“上传”页添加吧。</p>';
+    booksEl.innerHTML = '<p class="empty">这里还没有书，换个筛选条件或去“上传”页添加吧。</p>';
     pageIndicator.textContent = '第 1 页 / 共 1 页';
     return;
   }
@@ -150,9 +199,78 @@ function changePage(direction) {
 searchEl.addEventListener('input', debounce(() => load({ reset: true }), 300));
 statusEl.addEventListener('change', () => load({ reset: true }));
 tagFilterEl.addEventListener('change', () => load({ reset: true }));
+shelfFilterEl.addEventListener('change', () => load({ reset: true }));
 previousEl.addEventListener('click', () => changePage(-1));
 nextEl.addEventListener('click', () => changePage(1));
 refreshRecommendations.addEventListener('click', loadRecommendations);
+
+shelfCreateForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const name = shelfNameEl.value.trim();
+  if (!name) {
+    shelfCreateMsg.textContent = '书架名称不能为空';
+    return;
+  }
+  const res = await api('/api/shelves', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, scope: shelfScopeEl.value }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) {
+    shelfCreateMsg.textContent = `新建失败：${data.error || res.status}`;
+    return;
+  }
+  shelfNameEl.value = '';
+  shelfCreateMsg.textContent = '✓ 已创建';
+  await loadShelves();
+});
+
+shelfListEl.addEventListener('click', async (event) => {
+  const button = event.target.closest('button[data-action]');
+  if (!button) return;
+  const shelf = shelves.find((item) => item.id === button.dataset.id);
+  if (!shelf) return;
+
+  if (button.dataset.action === 'filter') {
+    shelfFilterEl.value = shelf.id;
+    await load({ reset: true });
+    window.scrollTo({ top: booksEl.offsetTop - 24, behavior: 'smooth' });
+    return;
+  }
+
+  if (button.dataset.action === 'rename') {
+    const name = window.prompt('新的书架名称', shelf.name);
+    if (name == null) return;
+    const res = await api(`/api/shelves/${encodeURIComponent(shelf.id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      shelfCreateMsg.textContent = `改名失败：${data.error || res.status}`;
+      return;
+    }
+    await loadShelves();
+    return;
+  }
+
+  if (button.dataset.action === 'delete') {
+    if (!window.confirm(`删除书架「${shelf.name}」？书籍本身不会被删除。`)) return;
+    const res = await api(`/api/shelves/${encodeURIComponent(shelf.id)}`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      shelfCreateMsg.textContent = `删除失败：${data.error || res.status}`;
+      return;
+    }
+    if (shelfFilterEl.value === shelf.id) {
+      shelfFilterEl.value = '';
+      await load({ reset: true });
+    }
+    await loadShelves();
+  }
+});
 
 function debounce(fn, ms) {
   let t;
@@ -162,9 +280,15 @@ function debounce(fn, ms) {
   };
 }
 
-load({ reset: true });
-loadRecommendations();
-loadTags();
+async function init() {
+  const data = await loadMe();
+  me = data?.user || null;
+  // 非管理员不能建共享书架，直接隐藏这个选项
+  if (me?.role !== 'admin') shelfScopeEl.querySelector('option[value="shared"]')?.remove();
+  await Promise.all([load({ reset: true }), loadShelves(), loadTags(), loadRecommendations()]);
+}
+
+init();
 
 let resizeTimer;
 window.addEventListener('resize', () => {

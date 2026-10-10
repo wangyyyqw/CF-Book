@@ -122,6 +122,31 @@ CREATE TABLE IF NOT EXISTS book_standard_tags (
 
 CREATE INDEX IF NOT EXISTS idx_book_standard_tags_tag ON book_standard_tags(tag_id);
 
+-- 自定义书架：与标准标签分开的个人/共享整理方式
+CREATE TABLE IF NOT EXISTS shelves (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  scope       TEXT NOT NULL DEFAULT 'shared',
+  owner       TEXT NOT NULL DEFAULT '',
+  created_by  TEXT NOT NULL DEFAULT '',
+  sort_order  INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_shelves_scope_owner_name ON shelves(scope, owner, name);
+
+CREATE TABLE IF NOT EXISTS shelf_books (
+  shelf_id TEXT NOT NULL,
+  book_id  TEXT NOT NULL,
+  added_by TEXT NOT NULL DEFAULT '',
+  added_at INTEGER NOT NULL,
+  PRIMARY KEY (shelf_id, book_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_shelf_books_book ON shelf_books(book_id);
+
 INSERT OR IGNORE INTO standard_tags (tag_id, name, dimension, category, parent_id, description, status)
 VALUES
   ('PUB_FIELD_0111', '日本文学', 'pub_field', '文学与艺术', 'PUB_FIELD_0050', '日本文学作品、文学传统及相关研究。', 'active'),

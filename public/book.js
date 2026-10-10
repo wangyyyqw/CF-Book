@@ -9,6 +9,29 @@ const STATUS_LABEL = { unread: '未读', reading: '在读', read: '已读' };
 let me = null;
 let tagDimensions = [];
 let tagSelects = [];
+let shelfOptions = [];
+let shelfSelection = new Set();
+
+async function loadShelfPicker(selectedIds) {
+  shelfSelection = new Set(selectedIds || []);
+  const picker = $('shelf-picker');
+  const res = await api('/api/shelves');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) {
+    picker.innerHTML = '<span class="muted">书架列表加载失败</span>';
+    return;
+  }
+  shelfOptions = data.shelves || [];
+  if (!shelfOptions.length) {
+    picker.innerHTML = '<span class="muted">还没有书架，去书库页新建一个。</span>';
+    return;
+  }
+  picker.innerHTML = shelfOptions.map((shelf) => `<label class="shelf-check">
+      <input type="checkbox" value="${escapeHtml(shelf.id)}" ${shelfSelection.has(shelf.id) ? 'checked' : ''} />
+      <span>${escapeHtml(shelf.name)}</span>
+      <span class="shelf-scope">${shelf.scope === 'personal' ? '个人' : '共享'}</span>
+    </label>`).join('');
+}
 
 async function loadTagOptions(selectedIds = []) {
   const response = await api('/api/tags?include_unused=1');
@@ -103,6 +126,7 @@ async function load() {
   renderCover(b.cover || '');
   $('download').dataset.uploadId = b.upload_id || '';
   $('download').dataset.filename = b.file_name || b.title || 'download';
+  await loadShelfPicker(b.shelf_ids || []);
   if (me?.role === 'admin') {
     $('edit-book').hidden = false;
     $('ai-classify-book').hidden = false;
@@ -123,6 +147,31 @@ $('save-state').addEventListener('click', async () => {
   const data = await res.json().catch(() => ({}));
   $('state-msg').textContent = res.ok && data.ok ? '✓ 已保存' : `保存失败：${data.error || res.status}`;
   if (res.ok && data.ok) await load();
+});
+
+$('save-shelves').addEventListener('click', async () => {
+  const boxes = [...$('shelf-picker').querySelectorAll('input[type="checkbox"]')];
+  const next = new Set(boxes.filter((box) => box.checked).map((box) => box.value));
+  const changed = shelfOptions.filter((shelf) => next.has(shelf.id) !== shelfSelection.has(shelf.id));
+  if (!changed.length) {
+    $('shelves-msg').textContent = '书架没有变化';
+    return;
+  }
+  $('shelves-msg').textContent = '正在保存…';
+  for (const shelf of changed) {
+    const res = await api(`/api/shelves/${encodeURIComponent(shelf.id)}/books`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(next.has(shelf.id) ? { add: [id] } : { remove: [id] }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      $('shelves-msg').textContent = `保存失败：${data.error || res.status}`;
+      return;
+    }
+  }
+  $('shelves-msg').textContent = '✓ 书架已更新';
+  await load();
 });
 
 $('tags-form').addEventListener('submit', async (event) => {

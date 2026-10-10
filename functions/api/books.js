@@ -1,6 +1,7 @@
-import { json } from '../utils/http.js';
+import { json, err } from '../utils/http.js';
 import { dbAll, dbGet } from '../utils/db.js';
 import { standardTagDetails } from '../utils/standard-tags.js';
+import { canViewShelf } from '../utils/shelves.js';
 
 export async function onRequestGet(context) {
   const { request, env } = context;
@@ -9,6 +10,7 @@ export async function onRequestGet(context) {
   const q = (url.searchParams.get('q') || '').trim();
   const tag = (url.searchParams.get('tag') || '').trim();
   const status = (url.searchParams.get('status') || '').trim();
+  const shelfId = (url.searchParams.get('shelf') || '').trim();
   const recommended = url.searchParams.get('recommended') === '1';
   const requestedLimit = Number(url.searchParams.get('limit')) || (recommended ? 3 : 18);
   const limit = Math.min(requestedLimit, 100);
@@ -39,6 +41,12 @@ export async function onRequestGet(context) {
       ? 'COALESCE(mine.is_favorite, 0) = 1'
       : "COALESCE(mine.status, 'unread') = ?");
     if (status !== 'favorite') filters.push(status);
+  }
+  if (shelfId) {
+    const shelf = await dbGet(env, 'SELECT id, scope, owner FROM shelves WHERE id = ?', shelfId);
+    if (!shelf || !canViewShelf(user, shelf)) return err('书架不存在', 404);
+    where.push('b.id IN (SELECT book_id FROM shelf_books WHERE shelf_id = ?)');
+    filters.push(shelfId);
   }
   const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
 
