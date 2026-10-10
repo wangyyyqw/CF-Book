@@ -118,7 +118,7 @@ function renderSummary() {
   const tasks = center.list();
   const active = tasks.filter((task) => task.status === 'uploading' || task.status === 'pending').length;
   summaryEl.textContent = tasks.length
-    ? `共 ${tasks.length} 本，进行中 ${active} 本`
+    ? `全部 ${tasks.length} 本，进行中 ${active} 本${activeFilter ? ` · 当前筛选 ${tasks.filter((task) => matchesFilter(task, activeFilter)).length} 本` : ''}`
     : '还没有上传任务，先选择文件。';
 }
 
@@ -138,7 +138,10 @@ for (const { key, label } of REPORT_FILTERS) {
 function renderReport() {
   const tasks = center.list();
   $('report-panel').hidden = tasks.length === 0;
-  for (const [key, button] of filterButtons) button.classList.toggle('active', key === activeFilter);
+  for (const [key, button] of filterButtons) {
+    button.classList.toggle('active', key === activeFilter);
+    button.setAttribute('aria-pressed', String(key === activeFilter));
+  }
   if (!tasks.length) return;
 
   const report = buildImportReport(tasks);

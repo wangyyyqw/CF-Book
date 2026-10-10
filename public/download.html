@@ -6,7 +6,7 @@
     <title>CF-Book · 下载</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
-  <body class="library-page">
+  <body class="library-page download-page">
     <header class="topbar library-topbar">
       <a class="library-brand" href="/library" aria-label="CF-Book 书库">
         <span class="library-mark">观</span><strong>CF-Book</strong>
@@ -22,6 +22,11 @@
     </header>
 
     <main class="shell library-shell">
+      <section class="page-heading">
+        <p class="library-eyebrow">传输 / 下载</p>
+        <h1>下一段旅程，带上一本书</h1>
+        <p>管理下载队列，查看进度与历史。下载时请保持页面打开。</p>
+      </section>
       <section class="panel">
         <h2>下载队列</h2>
         <div class="queue-toolbar">
@@ -36,7 +41,7 @@
           <button id="pause-all" type="button">全部暂停</button>
           <button id="resume-all" type="button">全部继续</button>
           <button id="clear-finished" type="button">清理已结束</button>
-          <span id="queue-summary" class="form-msg"></span>
+          <span id="queue-summary" class="form-msg" aria-live="polite"></span>
         </div>
         <ul id="download-queue" class="task-list"></ul>
       </section>
@@ -44,7 +49,7 @@
       <section class="panel">
         <h2>已入库任务</h2>
         <div class="library-bar">
-          <input id="task-search" type="search" placeholder="搜索文件名" />
+          <input id="task-search" type="search" placeholder="搜索文件名" aria-label="搜索已入库文件" />
           <label class="queue-inline">状态
             <select id="task-status">
               <option value="">全部</option>
@@ -55,9 +60,10 @@
           </label>
           <button id="queue-all-completed" type="button">已入库全部加入队列</button>
         </div>
-        <table id="tasks" class="tasks">
+        <table id="tasks" class="tasks responsive-table" role="table">
+          <caption class="sr-only">已入库与未完成的文件任务</caption>
           <thead>
-            <tr><th>文件名</th><th>大小</th><th>分块</th><th>状态</th><th></th></tr>
+            <tr><th scope="col">文件名</th><th scope="col">大小</th><th scope="col">分块</th><th scope="col">状态</th><th scope="col">操作</th></tr>
           </thead>
           <tbody></tbody>
         </table>

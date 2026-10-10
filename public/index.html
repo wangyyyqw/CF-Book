@@ -6,7 +6,7 @@
     <title>CF-Book · 上传任务</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
-  <body class="library-page">
+  <body class="library-page upload-page">
     <header class="topbar library-topbar">
       <a class="library-brand" href="/library" aria-label="CF-Book 书库">
         <span class="library-mark">观</span><strong>CF-Book</strong>
@@ -22,15 +22,20 @@
     </header>
 
     <main class="shell library-shell">
+      <section class="page-heading">
+        <p class="library-eyebrow">传输 / 上传</p>
+        <h1>把好书留在书架上</h1>
+        <p>批量添加，按本管理。未完成的任务保存在当前浏览器中。</p>
+      </section>
       <section class="panel">
         <h2>上传任务</h2>
         <div class="queue-toolbar">
-          <label class="btn-cover">选择书籍文件<input id="file" type="file" multiple hidden /></label>
+          <label class="btn-cover button-primary" tabindex="0" role="button">选择书籍文件<input id="file" type="file" multiple hidden /></label>
           <button id="start-all" type="button">全部开始</button>
           <button id="pause-all" type="button">全部暂停</button>
           <button id="cleanup-stale" type="button">清理长期失效任务</button>
           <button id="clear-finished" type="button">清理已结束</button>
-          <span id="queue-summary" class="form-msg"></span>
+          <span id="queue-summary" class="form-msg" aria-live="polite"></span>
         </div>
         <p id="file-summary" class="form-msg">可一次选择多本书，任务会保存在浏览器里，刷新页面后可继续。</p>
         <ul id="upload-queue" class="task-list"></ul>

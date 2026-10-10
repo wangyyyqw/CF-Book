@@ -158,11 +158,11 @@ function render(users) {
       const self = me && u.id === me.id;
       const disabled = Boolean(u.disabled);
       return `<tr data-id="${escapeHtml(u.id)}">
-        <td>${escapeHtml(u.username)}${self ? ' <span class="muted">（我）</span>' : ''}</td>
-        <td>${escapeHtml(u.display_name || '')}</td>
-        <td>${escapeHtml(ROLE_LABEL[u.role] || u.role)}</td>
-        <td>${disabled ? '已停用' : '正常'}</td>
-        <td class="row-actions">
+        <td data-label="用户名">${escapeHtml(u.username)}${self ? ' <span class="muted">（我）</span>' : ''}</td>
+        <td data-label="显示名称">${escapeHtml(u.display_name || '')}</td>
+        <td data-label="角色">${escapeHtml(ROLE_LABEL[u.role] || u.role)}</td>
+        <td data-label="状态">${disabled ? '已停用' : '正常'}</td>
+        <td data-label="操作" class="row-actions">
           <button type="button" data-action="password">重置密码</button>
           <button type="button" data-action="role" data-role="${u.role === 'admin' ? 'member' : 'admin'}" ${self ? 'disabled' : ''}>
             设为${u.role === 'admin' ? '成员' : '管理员'}

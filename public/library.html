@@ -6,7 +6,7 @@
     <title>CF-Book · 书库</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
-  <body class="library-page">
+  <body class="library-page catalog-page">
     <header class="topbar library-topbar">
       <a class="library-brand" href="/library" aria-label="CF-Book 书库">
         <span class="library-mark">观</span>
@@ -27,15 +27,15 @@
     <main class="shell library-shell">
       <section class="library-hero">
         <div class="library-title-row">
-          <p class="library-eyebrow">馆藏</p>
+          <h1 class="library-eyebrow">馆藏</h1>
           <span id="count"></span>
         </div>
         <p class="library-intro">一架旧书，半窗灯火。这里停着读过的、想读的，与舍不得读完的。</p>
         <details class="shelf-manager">
           <summary>管理书架</summary>
           <form id="shelf-create" class="shelf-create">
-            <input id="shelf-name" maxlength="24" placeholder="新书架名称（最多 24 字）" />
-            <select id="shelf-scope">
+            <input id="shelf-name" maxlength="24" placeholder="新书架名称（最多 24 字）" aria-label="新书架名称" />
+            <select id="shelf-scope" aria-label="书架可见范围">
               <option value="personal">个人书架</option>
               <option value="shared">共享书架（仅管理员）</option>
             </select>
@@ -59,8 +59,8 @@
         <div id="recommend-books" class="books recommend-books"></div>
       </section>
       <section class="library-bar">
-        <input id="search" type="search" placeholder="搜索书名 / 作者 / 简介" />
-        <select id="status">
+        <input id="search" type="search" placeholder="搜索书名 / 作者 / 简介" aria-label="搜索书籍" />
+        <select id="status" aria-label="阅读状态">
           <option value="">全部状态</option>
           <option value="unread">未读</option>
           <option value="reading">在读</option>

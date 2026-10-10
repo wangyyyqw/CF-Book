@@ -6,7 +6,7 @@
     <title>CF-Book · 标签库管理</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
-  <body class="library-page">
+  <body class="library-page tags-page">
     <header class="topbar library-topbar">
       <a class="library-brand" href="/library" aria-label="CF-Book 书库">
         <span class="library-mark">观</span><strong>CF-Book</strong>
@@ -22,28 +22,33 @@
     </header>
 
     <main class="shell library-shell">
+      <section class="page-heading">
+        <p class="library-eyebrow">管理 / 标签</p>
+        <h1>让每一本书，各得其所</h1>
+        <p>整理标准分类、别名与定义；个人收藏请使用独立书架。</p>
+      </section>
       <section class="panel">
         <h2>标签库概览</h2>
         <div id="tag-stats" class="tag-admin-stats"><span>正在读取标签库…</span></div>
         <div class="actions-row">
           <button id="export-tags" type="button">导出 JSON</button>
-          <label class="file-button">导入 JSON
+          <label class="file-button" tabindex="0" role="button">导入 JSON
             <input id="import-tags" type="file" accept="application/json,.json" hidden />
           </label>
-          <button id="only-unused" type="button">只看从未使用</button>
+          <button id="only-unused" type="button" aria-pressed="false">只看从未使用</button>
           <span id="tag-admin-msg" class="form-msg"></span>
         </div>
       </section>
 
       <section class="panel">
         <h2>新建标签</h2>
-        <form id="tag-create-form" class="inline-form tag-create-form">
-          <input id="new-tag-name" placeholder="标签名称" maxlength="40" required />
-          <select id="new-tag-dimension" required></select>
-          <input id="new-tag-category" placeholder="分类（默认“其他”）" maxlength="40" />
-          <input id="new-tag-parent" placeholder="父标签 ID（可选）" />
-          <input id="new-tag-aliases" placeholder="别名（逗号分隔）" />
-          <input id="new-tag-description" placeholder="定义说明（可选）" />
+        <form id="tag-create-form" class="inline-form tag-create-form field-grid">
+          <label>标签名称<input id="new-tag-name" maxlength="40" required /></label>
+          <label>所属维度<select id="new-tag-dimension" required></select></label>
+          <label>分类<input id="new-tag-category" placeholder="默认“其他”" maxlength="40" /></label>
+          <label>父标签 ID<input id="new-tag-parent" placeholder="可选" /></label>
+          <label>标签别名<input id="new-tag-aliases" placeholder="多个别名用逗号分隔" /></label>
+          <label>定义说明<input id="new-tag-description" placeholder="可选" /></label>
           <button type="submit">新建标签</button>
           <span id="tag-create-msg" class="form-msg"></span>
         </form>
@@ -52,9 +57,9 @@
       <section class="panel">
         <h2>合并重复标签</h2>
         <p class="form-msg">只能合并同一维度下的标签；源标签的书籍、别名与子标签会转到目标标签，源标签随后删除。</p>
-        <form id="tag-merge-form" class="inline-form">
-          <select id="merge-from" required><option value="">源标签（将被删除）</option></select>
-          <select id="merge-to" required><option value="">目标标签（保留）</option></select>
+        <form id="tag-merge-form" class="inline-form field-grid">
+          <label>源标签（将被删除）<select id="merge-from" required><option value="">请选择源标签</option></select></label>
+          <label>目标标签（保留）<select id="merge-to" required><option value="">请选择目标标签</option></select></label>
           <button type="submit">合并</button>
           <span id="tag-merge-msg" class="form-msg"></span>
         </form>
@@ -63,19 +68,20 @@
       <section class="panel">
         <h2>标签列表</h2>
         <div class="tag-list-tools">
-          <input id="tag-search" type="search" placeholder="搜索标签名称、别名或 ID" />
+          <input id="tag-search" type="search" placeholder="搜索标签名称、别名或 ID" aria-label="搜索标准标签" />
           <span id="tag-list-note" class="section-note"></span>
         </div>
-        <table class="tasks" id="tag-table">
+        <table class="tasks responsive-table" id="tag-table" role="table">
+          <caption class="sr-only">标准标签及其使用情况</caption>
           <thead>
             <tr>
-              <th>标签</th>
-              <th>维度</th>
-              <th>分类</th>
-              <th>使用</th>
-              <th>状态</th>
-              <th>别名</th>
-              <th>操作</th>
+              <th scope="col">标签</th>
+              <th scope="col">维度</th>
+              <th scope="col">分类</th>
+              <th scope="col">使用</th>
+              <th scope="col">状态</th>
+              <th scope="col">别名</th>
+              <th scope="col">操作</th>
             </tr>
           </thead>
           <tbody></tbody>

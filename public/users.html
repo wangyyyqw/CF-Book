@@ -6,7 +6,7 @@
     <title>CF-Book · 账号管理</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
-  <body class="library-page">
+  <body class="library-page users-page">
     <header class="topbar library-topbar">
       <a class="library-brand" href="/library" aria-label="CF-Book 书库">
         <span class="library-mark">观</span><strong>CF-Book</strong>
@@ -22,16 +22,21 @@
     </header>
 
     <main class="shell library-shell">
+      <section class="page-heading">
+        <p class="library-eyebrow">管理 / 账号与设置</p>
+        <h1>一起用好这座书库</h1>
+        <p>管理家庭账号、分类工具与数据备份。</p>
+      </section>
       <section class="panel">
         <h2>新建账号</h2>
-        <form id="create-form" class="inline-form">
-          <input id="new-username" placeholder="用户名（字母/数字/._-）" autocomplete="off" required />
-          <input id="new-display" placeholder="显示名称（可选）" autocomplete="off" />
-          <input id="new-password" type="password" placeholder="初始密码（至少 6 位）" autocomplete="new-password" required />
-          <select id="new-role">
+        <form id="create-form" class="inline-form field-grid">
+          <label>用户名<input id="new-username" placeholder="字母 / 数字 / . _ -" autocomplete="off" required /></label>
+          <label>显示名称<input id="new-display" placeholder="可选，用于显示昵称" autocomplete="off" /></label>
+          <label>初始密码<input id="new-password" type="password" placeholder="至少 6 位" autocomplete="new-password" required /></label>
+          <label>账号角色<select id="new-role">
             <option value="member">成员</option>
             <option value="admin">管理员</option>
-          </select>
+          </select></label>
           <button type="submit">创建</button>
           <span id="create-msg" class="form-msg"></span>
         </form>
@@ -39,14 +44,15 @@
 
       <section class="panel">
         <h2>账号列表</h2>
-        <table class="tasks" id="user-table">
+        <table class="tasks responsive-table" id="user-table" role="table">
+          <caption class="sr-only">书库账号及管理操作</caption>
           <thead>
             <tr>
-              <th>用户名</th>
-              <th>显示名称</th>
-              <th>角色</th>
-              <th>状态</th>
-              <th>操作</th>
+              <th scope="col">用户名</th>
+              <th scope="col">显示名称</th>
+              <th scope="col">角色</th>
+              <th scope="col">状态</th>
+              <th scope="col">操作</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -71,16 +77,16 @@
       <section class="panel">
         <h2>自定义 AI 接口</h2>
         <p class="form-msg">支持 OpenAI-compatible 和 Anthropic Messages（an）协议。API Key 仅发送到 CF-Book 并以密文保存；“获取模型”只请求模型列表，不调用生成接口。</p>
-        <form id="provider-form" class="inline-form">
-          <select id="provider-format" required>
+        <form id="provider-form" class="inline-form field-grid">
+          <label>接口协议<select id="provider-format" required>
             <option value="openai">OpenAI-compatible</option>
             <option value="anthropic">Anthropic Messages（an）</option>
-          </select>
-          <input id="provider-base-url" type="url" placeholder="HTTPS API 地址，例如 https://api.example.com/v1" autocomplete="url" required />
-          <input id="provider-api-key" type="password" placeholder="API Key（已保存时留空表示不更换）" autocomplete="new-password" />
-          <div class="actions-row">
+          </select></label>
+          <label>接口地址<input id="provider-base-url" type="url" placeholder="https://api.example.com/v1" autocomplete="url" required /></label>
+          <label class="wide-field">API Key<input id="provider-api-key" type="password" placeholder="已保存时留空表示不更换" autocomplete="new-password" /></label>
+          <div class="actions-row wide-field">
             <button id="provider-discover" type="button">获取模型</button>
-            <select id="provider-model" required><option value="">先获取模型</option></select>
+            <select id="provider-model" aria-label="AI 模型" required><option value="">先获取模型</option></select>
             <button id="provider-save" type="submit">保存 AI 配置</button>
             <button id="provider-delete" type="button">清除配置</button>
           </div>
@@ -97,8 +103,8 @@
           <button id="backup-export-plain" type="button">下载明文备份</button>
         </div>
         <div class="actions-row">
-          <label class="btn-cover">选择备份文件<input id="backup-file" type="file" accept="application/json,.json" hidden /></label>
-          <select id="backup-mode">
+          <label class="btn-cover" tabindex="0" role="button">选择备份文件<input id="backup-file" type="file" accept="application/json,.json" hidden /></label>
+          <select id="backup-mode" aria-label="恢复方式">
             <option value="merge">合并（保留现有数据）</option>
             <option value="replace">覆盖（清空后按备份恢复）</option>
           </select>
@@ -111,9 +117,9 @@
 
       <section class="panel">
         <h2>修改我的密码</h2>
-        <form id="password-form" class="inline-form">
-          <input id="current-password" type="password" placeholder="当前密码" autocomplete="current-password" required />
-          <input id="next-password" type="password" placeholder="新密码（至少 6 位）" autocomplete="new-password" required />
+        <form id="password-form" class="inline-form field-grid">
+          <label>当前密码<input id="current-password" type="password" autocomplete="current-password" required /></label>
+          <label>新密码<input id="next-password" type="password" placeholder="至少 6 位" autocomplete="new-password" required /></label>
           <button type="submit">保存</button>
           <span id="password-msg" class="form-msg"></span>
         </form>

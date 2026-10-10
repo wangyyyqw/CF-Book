@@ -24,6 +24,7 @@ const STATUS_CLASS = { unread: 's-unread', reading: 's-reading', read: 's-read',
 let page = 1;
 let pageSize = 24;
 let requestId = 0;
+let recommendationRequestId = 0;
 let me = null;
 let shelves = [];
 
@@ -61,16 +62,18 @@ function cardHtml(b, index) {
 
 async function loadRecommendations() {
   const columns = columnsForWidth();
+  const token = ++recommendationRequestId;
   refreshRecommendations.disabled = true;
   try {
     const res = await api(`/api/books?recommended=1&limit=${columns}`);
     const data = await res.json().catch(() => ({}));
+    if (token !== recommendationRequestId) return;
     if (!res.ok || !data.ok) return;
     recommendEl.innerHTML = data.books.map((book, index) => cardHtml(book, index)).join('');
     recommendNote.textContent = `随机抽取 ${data.books.length} 本`;
     if (!data.books.length) recommendEl.innerHTML = '<p class="empty">书库还没有推荐书籍。</p>';
   } finally {
-    refreshRecommendations.disabled = false;
+    if (token === recommendationRequestId) refreshRecommendations.disabled = false;
   }
 }
 

@@ -17,6 +17,7 @@ const STATUS_TEXT = {
   failed: '失败',
   cancelled: '已取消',
 };
+const UPLOAD_STATUS_TEXT = { completed: '已入库', active: '上传中', aborted: '已中止' };
 
 const queueEl = $('download-queue');
 const historyEl = $('download-history');
@@ -203,7 +204,7 @@ function renderTasks() {
       Object.assign(document.createElement('td'), {
         textContent: `${upload.uploaded_chunks || 0}/${upload.total_chunks}`,
       }),
-      Object.assign(document.createElement('td'), { textContent: upload.status }),
+      Object.assign(document.createElement('td'), { textContent: UPLOAD_STATUS_TEXT[upload.status] || upload.status }),
     );
     const cell = document.createElement('td');
     const button = document.createElement('button');
@@ -216,6 +217,9 @@ function renderTasks() {
     });
     cell.appendChild(button);
     tr.appendChild(cell);
+    ['文件名', '大小', '分块', '状态', '操作'].forEach((label, index) => {
+      tr.cells[index].dataset.label = label;
+    });
     tbody.appendChild(tr);
   }
   $('tasks-msg').textContent = visible.length ? `共 ${visible.length} 个任务` : '没有匹配的任务。';

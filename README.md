@@ -277,6 +277,18 @@ git diff --check
 
 测试使用真实 SQLite 语句检查、鉴权、分页、标签、上传续传、封面和 AI Provider 等行为；测试不会连接生产 D1、Telegram 或外部 AI 服务。
 
+### 桌面与移动端界面验收
+
+`scripts/check-responsive-ui.mjs` 使用 Playwright 和虚构数据检查 8 个页面，不读取本地凭证、不连接生产接口、不启动真实上传下载。宽度覆盖 320、375、768、999、1000、1440、1920px，检查横向溢出、长文件名、手机卡片字段、触控区域、导航断点、暗色表单、键盘选择文件、筛选和推荐响应乱序。
+
+在已有 Playwright 与 Chromium 的环境中运行（无需改项目依赖）：
+
+```bash
+node scripts/check-responsive-ui.mjs
+```
+
+若 Playwright 安装在独立工具目录，设置 `NODE_PATH` 指向该目录的 `node_modules`；可通过 `CHROMIUM_EXECUTABLE_PATH` 指定浏览器路径，`UI_OUTPUT_DIR` 指定截图目录。截图和日志应留在被忽略的 `.wrangler/` 目录，不提交到仓库。该验收是浏览器模拟，不替代 iOS Safari、Android 浏览器、软键盘与读屏器实机验证。
+
 ## 清空测试数据
 
 `scripts/cleanup-data.mjs` 会清理 Telegram 分块消息、D1 书籍数据和 R2 封面，但不会删除账号表结构。默认只预览：

@@ -83,18 +83,18 @@ function rowHtml(tag) {
   const id = escapeHtml(tag.tag_id);
   if (tag.tag_id === editingId) {
     return `<tr class="tag-row editing" data-id="${id}">
-      <td><input class="e-name" value="${escapeHtml(tag.name)}" maxlength="40" /></td>
-      <td>${escapeHtml(dimensionLabel(tag.dimension))}</td>
-      <td><input class="e-category" value="${escapeHtml(tag.category)}" maxlength="40" /></td>
-      <td>${tag.usage_count}</td>
-      <td>
-        <select class="e-status">
+      <td data-label="标签"><input class="e-name" aria-label="标签名称" value="${escapeHtml(tag.name)}" maxlength="40" /></td>
+      <td data-label="维度">${escapeHtml(dimensionLabel(tag.dimension))}</td>
+      <td data-label="分类"><input class="e-category" aria-label="标签分类" value="${escapeHtml(tag.category)}" maxlength="40" /></td>
+      <td data-label="使用">${tag.usage_count}</td>
+      <td data-label="状态">
+        <select class="e-status" aria-label="标签状态">
           <option value="active" ${tag.status !== 'disabled' ? 'selected' : ''}>启用</option>
           <option value="disabled" ${tag.status === 'disabled' ? 'selected' : ''}>停用</option>
         </select>
       </td>
-      <td><input class="e-aliases" value="${escapeHtml(tag.aliases.join(', '))}" /></td>
-      <td class="tag-row-actions">
+      <td data-label="别名"><input class="e-aliases" aria-label="标签别名" value="${escapeHtml(tag.aliases.join(', '))}" /></td>
+      <td data-label="操作" class="tag-row-actions">
         <button type="button" data-action="save">保存</button>
         <button type="button" data-action="cancel">取消</button>
       </td>
@@ -103,13 +103,13 @@ function rowHtml(tag) {
   const disabled = tag.status === 'disabled';
   const aliases = tag.aliases.length ? escapeHtml(tag.aliases.join('、')) : '<span class="muted">—</span>';
   return `<tr class="tag-row${disabled ? ' disabled' : ''}" data-id="${id}">
-    <td><strong>${escapeHtml(tag.name)}</strong><br /><span class="tag-id">${id}</span></td>
-    <td>${escapeHtml(dimensionLabel(tag.dimension))}</td>
-    <td>${escapeHtml(tag.category)}</td>
-    <td>${tag.usage_count}</td>
-    <td>${disabled ? '已停用' : '启用'}</td>
-    <td>${aliases}</td>
-    <td class="tag-row-actions">
+    <td data-label="标签"><strong>${escapeHtml(tag.name)}</strong><br /><span class="tag-id">${id}</span></td>
+    <td data-label="维度">${escapeHtml(dimensionLabel(tag.dimension))}</td>
+    <td data-label="分类">${escapeHtml(tag.category)}</td>
+    <td data-label="使用">${tag.usage_count}</td>
+    <td data-label="状态">${disabled ? '已停用' : '启用'}</td>
+    <td data-label="别名">${aliases}</td>
+    <td data-label="操作" class="tag-row-actions">
       <button type="button" data-action="edit">编辑</button>
       <button type="button" data-action="toggle">${disabled ? '启用' : '停用'}</button>
       <button type="button" data-action="delete">删除</button>
@@ -299,6 +299,7 @@ $('import-tags').addEventListener('change', async (event) => {
 $('only-unused').addEventListener('click', () => {
   onlyUnused = !onlyUnused;
   $('only-unused').classList.toggle('active', onlyUnused);
+  $('only-unused').setAttribute('aria-pressed', String(onlyUnused));
   $('only-unused').textContent = onlyUnused ? '显示全部标签' : '只看从未使用';
   renderTable();
 });

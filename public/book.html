@@ -6,7 +6,7 @@
     <title>CF-Book · 书籍详情</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
-  <body class="library-page">
+  <body class="library-page book-page">
     <header class="topbar library-topbar">
       <a class="library-brand" href="/library" aria-label="CF-Book 书库">
         <span class="library-mark">观</span><strong>CF-Book</strong>
@@ -22,13 +22,17 @@
     </header>
 
     <main class="shell library-shell">
+      <section class="page-heading compact-heading">
+        <a class="back-link" href="/library">← 返回书库</a>
+        <p class="library-eyebrow">书目 / 详情</p>
+      </section>
       <section class="panel book-form">
         <div class="book-cover">
           <img id="cover" alt="封面" />
           <span id="cover-placeholder" class="cover-placeholder" hidden></span>
         </div>
         <div class="book-fields">
-          <h2 id="book-title">加载中…</h2>
+          <h1 id="book-title">加载中…</h1>
           <p class="book-meta" id="book-meta"></p>
 
           <div class="book-tag-summary">
