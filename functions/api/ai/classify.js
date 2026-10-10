@@ -1,12 +1,7 @@
 import { json, err } from '../../utils/http.js';
 import { dbAll, dbGet, dbRun, nowSec } from '../../utils/db.js';
 import { requireAdmin } from '../../utils/auth.js';
-import { classifyBook, dailyLimit, MAX_AI_ATTEMPTS } from '../../utils/ai-classification.js';
-
-async function usedToday(env, start) {
-  const row = await dbGet(env, 'SELECT COALESCE(SUM(neurons), 0) AS neurons FROM ai_usage WHERE created_at >= ?', start);
-  return Number(row?.neurons || 0);
-}
+import { classifyBook, dailyLimit, MAX_AI_ATTEMPTS, usedAiNeuronsToday } from '../../utils/ai-classification.js';
 
 export async function onRequestGet(context) {
   const denied = requireAdmin(context);
@@ -47,7 +42,7 @@ export async function onRequestPost(context) {
   const offset = Math.max(Number(body.offset) || 0, 0);
   const force = body.force === true;
   const start = Math.floor(Date.now() / 86400000) * 86400;
-  if (await usedToday(env, start) >= dailyLimit(env)) return err('今日 AI 额度已用尽', 429);
+  if (await usedAiNeuronsToday(env, start) >= dailyLimit(env)) return err('今日 AI 额度已用尽', 429);
 
   const books = await dbAll(
     env,
@@ -61,7 +56,7 @@ export async function onRequestPost(context) {
   );
   const results = [];
   for (const book of books) {
-    if (await usedToday(env, start) >= dailyLimit(env)) break;
+    if (await usedAiNeuronsToday(env, start) >= dailyLimit(env)) break;
     try {
       results.push(await classifyBook(env, book.id, { force }));
     } catch (error) {

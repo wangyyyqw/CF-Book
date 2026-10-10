@@ -59,6 +59,7 @@ test('导出包含书目、账号、标签、评分状态与 Telegram 分块索�
   assert.equal(backup.tables.chunks.length, 2, '必须带上 Telegram 原文件的索引');
   assert.equal(backup.tables.chunks[0].tg_file_id, 'FILE0');
   assert.equal(backup.tables.book_user_state[0].rating, 9);
+  assert.equal(backup.tables.books[0].title_cleaned_at, 0, '备份应包含书名清洗标记');
   assert.equal(backup.counts.chunks, 2);
 });
 

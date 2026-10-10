@@ -141,6 +141,39 @@ async function classifyBatch({ force = false } = {}) {
   }
 }
 
+async function cleanTitlesBatch() {
+  $('ai-title-clean').disabled = true;
+  $('ai-msg').textContent = '正在清洗现有书名…';
+  try {
+    let processed = 0;
+    let failed = 0;
+    let offset = 0;
+    while (true) {
+      const res = await api('/api/ai/title-clean', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 10, offset }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        $('ai-msg').textContent = `清洗失败：${data.error || res.status}；此前已处理 ${processed} 本`;
+        await loadAiUsage();
+        return;
+      }
+      processed += data.processed;
+      failed += data.results.filter((result) => result.error).length;
+      $('ai-msg').textContent = `清洗中：已处理 ${processed} 本${failed ? `，失败 ${failed} 本` : ''}`;
+      await loadAiUsage();
+      if (data.processed < data.batchLimit) break;
+      offset += data.processed;
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+    }
+    $('ai-msg').textContent = `书名清洗完成，共处理 ${processed} 本${failed ? `，失败 ${failed} 本` : ''}`;
+  } finally {
+    $('ai-title-clean').disabled = false;
+  }
+}
+
 async function load() {
   const res = await api('/api/users');
   const data = await res.json().catch(() => ({}));
@@ -289,6 +322,11 @@ $('ai-classify').addEventListener('click', classifyBatch);
 $('ai-reclassify-all').addEventListener('click', () => {
   if (confirm('将使用联网书目和 AI 重新处理全部书籍，更新书名和共享标签，并消耗今日 AI 额度。继续吗？')) {
     classifyBatch({ force: true });
+  }
+});
+$('ai-title-clean').addEventListener('click', () => {
+  if (confirm('将对现有图书逐本调用 AI 清洗书名，只更新数据库书名，不会改动原文件，并消耗今日 AI 额度。继续吗？')) {
+    cleanTitlesBatch();
   }
 });
 $('provider-discover').addEventListener('click', discoverProviderModels);

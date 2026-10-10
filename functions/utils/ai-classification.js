@@ -23,6 +23,11 @@ export function dailyLimit(env) {
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_DAILY_LIMIT;
 }
 
+export async function usedAiNeuronsToday(env, start) {
+  const row = await dbGet(env, 'SELECT COALESCE(SUM(neurons), 0) AS neurons FROM ai_usage WHERE created_at >= ?', start);
+  return Number(row?.neurons || 0);
+}
+
 export function estimateNeurons(promptTokens, completionTokens, model = DEFAULT_AI_MODEL) {
   if (model.includes(':')) return 0;
   const rates = MODEL_RATES[model] || MODEL_RATES[DEFAULT_AI_MODEL];
@@ -68,7 +73,7 @@ export async function cleanBookTitle(env, bookId) {
     }
     const cleanedTitle = normalizeCleanedTitle(text);
     if (!cleanedTitle) throw new Error('AI 未能识别书名');
-    await dbRun(env, 'UPDATE books SET title=?, updated_at=? WHERE id=?', cleanedTitle, nowSec(), bookId);
+    await dbRun(env, 'UPDATE books SET title=?, title_cleaned_at=?, updated_at=? WHERE id=?', cleanedTitle, nowSec(), nowSec(), bookId);
     await saveUsage(env, { bookId, model, usage, status: 'completed' });
     return { bookId, originalTitle, title: cleanedTitle, usage };
   } catch (error) {

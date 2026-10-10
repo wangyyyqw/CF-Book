@@ -50,7 +50,8 @@ CREATE TABLE IF NOT EXISTS books (
   sha256      TEXT NOT NULL DEFAULT '',
   created_by  TEXT NOT NULL DEFAULT '',
   created_at  INTEGER NOT NULL,
-  updated_at  INTEGER NOT NULL
+  updated_at  INTEGER NOT NULL,
+  title_cleaned_at INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_books_title ON books(title);

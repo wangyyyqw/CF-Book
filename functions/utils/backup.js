@@ -10,7 +10,7 @@ const BATCH_SIZE = 100;
 // 必须和书目一起备份，否则恢复后书还在但原文件已经找不回来。
 export const BACKUP_TABLES = [
   { name: 'users', columns: ['id', 'username', 'display_name', 'password_hash', 'role', 'disabled', 'created_at', 'updated_at'] },
-  { name: 'books', columns: ['id', 'upload_id', 'title', 'author', 'description', 'cover', 'format', 'isbn', 'publisher', 'language', 'file_name', 'file_size', 'sha256', 'created_by', 'created_at', 'updated_at'] },
+  { name: 'books', columns: ['id', 'upload_id', 'title', 'author', 'description', 'cover', 'format', 'isbn', 'publisher', 'language', 'file_name', 'file_size', 'sha256', 'created_by', 'created_at', 'updated_at', 'title_cleaned_at'] },
   { name: 'uploads', columns: ['upload_id', 'filename', 'mime', 'total_size', 'chunk_size', 'total_chunks', 'sha256', 'status', 'owner', 'verified_at', 'verify_result', 'created_at', 'updated_at'] },
   { name: 'chunks', columns: ['upload_id', 'idx', 'size', 'sha256', 'status', 'tg_chat_id', 'tg_message_id', 'tg_file_id', 'error', 'retries', 'updated_at'] },
   { name: 'book_user_state', columns: ['book_id', 'user_id', 'rating', 'status', 'is_favorite', 'updated_at'] },
