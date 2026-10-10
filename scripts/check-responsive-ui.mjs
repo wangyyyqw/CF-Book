@@ -103,7 +103,14 @@ async function checkPage(browser, base, route, width) {
   await mockApi(context);
   const page = await context.newPage();
   const errors = [];
+  const recommendationRequests = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === '/api/books' && url.searchParams.get('recommended') === '1') {
+      recommendationRequests.push(url.href);
+    }
+  });
   page.setDefaultTimeout(5000);
   const name = route.split('?')[0];
   await page.goto(`${base}/${route}`);
@@ -115,7 +122,8 @@ async function checkPage(browser, base, route, width) {
   if (width <= 999) await record(`${label} 触摸操作区域`, () => checkTouchTargets(page));
   if (name === 'library') {
     await checkLibrary(page, label);
-    if (width === 1440) await checkRecommendationRace(page, label);
+    await checkRecommendationStability(page, label, width, recommendationRequests);
+    if (width === 1440) await checkPendingRecommendation(page, label, recommendationRequests);
   }
   if (name === 'tags') await checkTagEditor(page, label);
   if (name === '') await checkImportFilter(page, label);
@@ -141,22 +149,63 @@ async function checkLibrary(page, label) {
   });
 }
 
-async function checkRecommendationRace(page, label) {
+async function recommendationIds(page) {
+  return page.locator('#recommend-books .book-card').evaluateAll((cards) => cards.map((card) => card.getAttribute('href')));
+}
+
+async function checkRecommendationStability(page, label, width, requests) {
+  await page.locator('#refresh-recommendations').waitFor();
+  await page.waitForFunction(() => !document.querySelector('#refresh-recommendations').disabled);
+  const original = await recommendationIds(page);
+  const before = requests.length;
+  await record(`${label} 滚动与高度变化不重抽推荐`, async () => {
+    await page.mouse.wheel(0, 500);
+    await page.setViewportSize({ width, height: 720 });
+    await page.waitForTimeout(350);
+    assert.equal(requests.length, before, '地址栏或软键盘导致的高度变化不得重抽推荐');
+    assert.deepEqual(await recommendationIds(page), original);
+  });
+  await record(`${label} 横竖屏切换不重抽推荐`, async () => {
+    await page.setViewportSize({ width: width < 1000 ? 1440 : 375, height: 960 });
+    await page.waitForTimeout(350);
+    assert.equal(requests.length, before, '跨列数断点只重排现有推荐');
+    assert.deepEqual(await recommendationIds(page), original);
+    await assertLayout(page);
+  });
+  await page.setViewportSize({ width, height: 960 });
+  await page.waitForTimeout(350);
+  await record(`${label} 主动换一批仍可用`, async () => {
+    const count = requests.length;
+    await page.locator('#refresh-recommendations').click();
+    await page.waitForFunction(() => !document.querySelector('#refresh-recommendations').disabled);
+    assert.equal(requests.length, count + 1);
+  });
+  await record(`${label} 刷新页面重新请求推荐`, async () => {
+    const count = requests.length;
+    await page.reload();
+    await waitForContent(page, 'library');
+    await page.waitForFunction(() => document.querySelectorAll('#recommend-books .book-card').length > 0);
+    assert.equal(requests.length, count + 1);
+  });
+}
+
+async function checkPendingRecommendation(page, label, requests) {
   const pattern = '**/api/books?*';
   await page.route(pattern, async (route) => {
     const url = new URL(route.request().url());
     if (url.searchParams.get('recommended') !== '1') return route.fallback();
-    await new Promise((done) => setTimeout(done, url.searchParams.get('limit') === '6' ? 700 : 10));
+    await new Promise((done) => setTimeout(done, 700));
     await route.fulfill({ json: uiApiResponse(url.pathname, url.searchParams, '/library') });
   });
-  await record(`${label} 跨断点推荐乱序响应`, async () => {
-    const old = page.waitForResponse((response) => response.url().includes('recommended=1&limit=6'));
-    const latest = page.waitForResponse((response) => response.url().includes('recommended=1&limit=3'));
-    await page.locator('#refresh-recommendations').click();
+  await record(`${label} 推荐加载中切换宽度不新增请求`, async () => {
+    const count = requests.length;
+    await page.reload();
     await page.setViewportSize({ width: 375, height: 960 });
-    await Promise.all([old, latest]);
-    await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
-    assert.equal(await page.locator('#recommend-books .book-card').count(), 3, '过期的桌面推荐不得覆盖手机结果');
+    await page.waitForFunction(() => !document.querySelector('#refresh-recommendations').disabled &&
+      document.querySelectorAll('#recommend-books .book-card').length > 0);
+    assert.equal(requests.length, count + 1);
+    assert.equal(await page.locator('#recommend-books .book-card').count(), 6, '推荐保留首次加载时抽取的书籍');
+    await assertLayout(page);
   });
   await page.unroute(pattern);
   await page.setViewportSize({ width: 1440, height: 960 });

@@ -298,6 +298,5 @@ window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
     if (pageSize !== pageSizeForWidth()) load({ reset: true });
-    loadRecommendations();
   }, 180);
 });
