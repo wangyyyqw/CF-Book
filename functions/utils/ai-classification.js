@@ -55,9 +55,11 @@ export async function cleanBookTitle(env, bookId) {
       const result = await generateText({
         model: provider(providerConfig.model),
         prompt,
-        maxOutputTokens: 256,
+        // 推理型模型（如 deepseek-v4.1-flash）会先输出思考再给书名，
+        // 预算过小会把 token 全花在思考上、正文为空，导致清洗失败。
+        maxOutputTokens: 1024,
         maxRetries: 0,
-        abortSignal: AbortSignal.timeout(30000),
+        abortSignal: AbortSignal.timeout(45000),
       });
       text = result.text || result.reasoningText || '';
       usage = normalizeUsage({ prompt_tokens: result.usage.inputTokens, completion_tokens: result.usage.outputTokens });
@@ -65,7 +67,7 @@ export async function cleanBookTitle(env, bookId) {
       if (!env.AI) throw new Error('未配置自定义 AI 接口或 Workers AI 绑定');
       const response = await env.AI.run(model, {
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 128,
+        max_tokens: 512,
         temperature: 0.1,
       });
       text = responseText(response);
