@@ -2,7 +2,8 @@ import { dbAll, dbGet, nowSec } from './db.js';
 
 export const BACKUP_FORMAT = 'cf-book-backup';
 export const BACKUP_VERSION = 1;
-const KDF_ITERATIONS = 200000;
+// Cloudflare 的 WebCrypto 实现拒绝超过 10 万次的 PBKDF2 迭代，这里与登录口令保持同一强度
+const KDF_ITERATIONS = 100000;
 const BATCH_SIZE = 100;
 
 // 备份范围固定为这些表。uploads/chunks 是 Telegram 原文件的 D1 索引，
