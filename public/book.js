@@ -8,6 +8,7 @@ const STATUS_LABEL = { unread: '未读', reading: '在读', read: '已读' };
 const MAX_COMMENT_LENGTH = 500;
 
 let me = null;
+let multiUser = false;
 let tagDimensions = [];
 let tagSelects = [];
 let shelfOptions = [];
@@ -81,6 +82,11 @@ function renderCover(url) {
 }
 
 function renderRatings(book) {
+  // 单人使用时隐藏“大家的打分”，第 2 个账号出现后再展示多人视图
+  const box = document.querySelector('.ratings-box');
+  if (box) box.hidden = !multiUser;
+  if (!multiUser) return;
+
   $('ratings-title').textContent = book.rating_count
     ? `大家的打分 · 平均 ${Number(book.rating_avg).toFixed(1)}（${book.rating_count} 人）`
     : '大家的打分';
@@ -255,6 +261,7 @@ $('ai-classify-book').addEventListener('click', async () => {
 async function init() {
   const data = await loadMe();
   me = data?.user || null;
+  multiUser = Boolean(data?.multiUser);
   if (me?.role === 'admin') $('edit-book').hidden = false;
   await load();
 }

@@ -27,6 +27,7 @@ let pageSize = 24;
 let requestId = 0;
 let recommendationRequestId = 0;
 let me = null;
+let multiUser = false;
 let shelves = [];
 let facetsCacheKey = '';
 let facetsCache = null;
@@ -42,7 +43,8 @@ function cardHtml(b, index) {
   const tags = tagList.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join('');
   // 徽标显示所有人打分的平均分，胶囊显示当前账号自己的阅读状态
   const count = Number(b.rating_count) || 0;
-  const ratingBadge = count
+  // 单人使用时平均分就是自己的评分，没有“大家”的意义，隐藏评分徽标
+  const ratingBadge = multiUser && count
     ? `<span class="bc-rating" title="${count} 人评分">${Number(b.rating_avg).toFixed(1)}</span>`
     : '';
   const myStatus = b.my_status || 'unread';
@@ -338,6 +340,7 @@ function debounce(fn, ms) {
 async function init() {
   const data = await loadMe();
   me = data?.user || null;
+  multiUser = Boolean(data?.multiUser);
   // 非管理员不能建共享书架，直接隐藏这个选项
   if (me?.role !== 'admin') shelfScopeEl.querySelector('option[value="shared"]')?.remove();
   facetsCacheKey = `cf-book-library-facets:${me?.username || 'anonymous'}`;
