@@ -11,6 +11,7 @@
 - D1 备份含书目、账号、标签、评分、状态与 Telegram 分块索引；恢复只重建 D1，不触碰 Telegram 原文件。
 - 本次（2026-10-11）新增 7 项优化中剩余 4 项并逐项推送 `origin/main`：登录失败限流（`cf60c6b`）、按内容哈希提示疑似重复（`79ef6fd`）此前已完成；本次完成书库多字段排序（`c6fe219`）、书库统计面板（`fe19bb2`）、个人评论/笔记（`9688e78`）、单人默认隐藏多人视图（`8bd1e9f`），并补响应式验收数据（`f0786dc`）。全量测试 189 项通过，Playwright 响应式验收 460/460 通过。
 - 本次（2026-10-11 续）将书库统计从账号管理页拆成独立页（`4bf45f7`，已推 `origin/main`），并完成一轮 Cloudflare 部署：Pages 重新部署（`de44b37e`）、新建 R2 备份桶 `cf-book-backups`、部署定时备份 Worker `cf-book-backup-cron` 并配置 `ADMIN_TOKEN` secret。全量测试 189 项通过，本机 Playwright 响应式验收 509/509 通过（9 页 × 7 宽）。
+- 本次（2026-10-11 再续）按详情页浏览器批注重整并再次部署（`0256356`）：评论/笔记独立成框并单独保存、删除详情页标签编辑面板、AI 生成标签迁入编辑页、去掉“共享分类”标题与左竖线、只读标签居中。重新部署定时备份 Worker `cf-book-backup-cron`（回填真实 `CF_BOOK_URL`/桶名后 `wrangler deploy`，`ADMIN_TOKEN` secret 已在）与 Pages（`https://9a3ed841.cf-book.pages.dev`，主域 `cf-book.pages.dev`）。全量测试 189 项通过，本机 Playwright 响应式 509/509 通过。
 
 ## 一、架构健康度
 
@@ -23,6 +24,12 @@
 
 ## 二、变更影响范围
 
+- 本次（2026-10-11 再续）详情页批注重整与再部署：
+  - 评论独立（批注1）：`public/book.html` 把 `#f-comment`/`#comment-count` 从 `.state-row` 移到新 `.comment-box`，加 `#save-comment`/`#comment-msg`；`public/book.js` 的保存评分不再带 comment、新增“保存笔记”只提交 `{ comment }`（state 接口对未传字段读 existing，分区互不覆盖）。
+  - 标签迁移（批注2）：删除 `public/book.html` 的 `.book-tag-editor` 面板与 `public/book.js` 的 `loadTagOptions`/`fillTagSelect`/`tags-form`/`ai-classify-book` 逻辑；`public/edit.html`/`edit.js` 在既有标准标签选择区加“AI 生成标签”按钮与调试面板（仅管理员，沿用 `POST /api/books/:id/classify`）。详情页保留只读标签 chips。行为变更：标签编辑由“任意登录用户（`/api/books/:id/tags`）”收敛到“仅管理员（编辑页 `/api/books/:id`）”；`/api/books/:id/tags` 端点保留但前端已无调用点。
+  - 样式（批注3/4）：`public/style.css` 去掉 `.book-section-label`“共享分类”标题、`.book-tag-summary` 左竖线与底色，`.tag-groups` 居中；新增 `.comment-box` 样式并把暗色 textarea 规则从 `.state-row .comment-field textarea` 改到 `.comment-box textarea`；清理 `.book-tag-editor` 死样式。
+  - 再部署：回填两处 `wrangler.toml` 真实值后 `wrangler deploy` 重新部署 `cf-book-backup-cron`（cron `17 3 * * *` UTC，绑定 `cf-book-backups`，`CF_BOOK_URL=https://cf-book.pages.dev`，`ADMIN_TOKEN` secret 在列），并 `pages deploy public` 重新部署前端；完成后 `apply_patch` 还原 `wrangler.toml` 为公开仓库占位，工作区无残留。
+  - 验证：`npm test` 189 项全绿；`node --check public/book.js public/edit.js` 通过；`git diff --check` 无告警；本机 Playwright 响应式 509/509 通过。线上核对：`/book.js` 含 `save-comment`、无 `tags-form`/`ai-classify`，`/book` 含 `comment-box`、无“共享分类”/`book-tag-editor`，`/edit` 含 `ai-classify-book`，`style.css` chips 居中且无左竖线，未登录 `/book` 302 跳 `/login`；备份 Worker 错误令牌 403、正确令牌 200 并在 R2 生成 `backups/cf-book-backup-2026-10-11T03-17-47-165Z.json`（约 436KB）。
 - 本次（2026-10-11 续）统计页拆分与 Cloudflare 部署：
   - 统计页拆分（`4bf45f7`）：新增 `public/stats.html`、`public/stats.js` 承载统计总览与分维度列表，仅管理员可见、非管理员提示无权限；`public/nav.js` 在“账号管理”前加“统计”入口；从 `public/users.html`、`public/users.js` 删除统计 panel 及 `loadStats`/`groupTagsByDimension`/`DIMENSION_LABEL` 与无用的 `formatBytes` 导入；`scripts/check-responsive-ui.mjs` 增测 stats 页。接口契约不变，复用既有 `/api/library/stats`。
   - 部署与资源：Pages 重新部署线上生效（`https://de44b37e.cf-book.pages.dev`，主域 `cf-book.pages.dev`）；新建 R2 桶 `cf-book-backups` 存放备份；部署独立定时备份 Worker `cf-book-backup-cron`（`https://cf-book-backup-cron.uycmjfichg.workers.dev`，cron `17 3 * * *` UTC），并用与 Pages 一致的 `ADMIN_TOKEN` 设置 Worker secret。部署时临时回填 `wrangler.toml` 与 `workers/backup-cron/wrangler.toml` 真实值，完成后已 `git checkout --` 还原为公开仓库占位，工作区无残留改动。
