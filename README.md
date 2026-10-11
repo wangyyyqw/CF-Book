@@ -104,11 +104,11 @@ npx wrangler d1 execute 你的 D1 数据库名称 --remote --command \
 
 1. 先备份或在 Cloudflare 的预览/测试数据库验证。
 2. 确认目标库已经执行到哪个迁移文件；D1 不会替项目自动维护本仓库的迁移记录。
-3. 只按编号顺序执行尚未执行的迁移，每个文件只执行一次。迁移文件的完整顺序是 `0002` 至 `0012`；例如确认只缺少最后一项时：
+3. 只按编号顺序执行尚未执行的迁移，每个文件只执行一次。迁移文件的完整顺序是 `0002` 至 `0018`；例如确认只缺少最后一项时：
 
    ```bash
    npx wrangler d1 execute 你的 D1 数据库名称 --remote \
-     --file migrations/0012_humanities_and_web_tags.sql
+     --file migrations/0018_book_user_comment.sql
    ```
 
 4. 如果目标库已经包含某个迁移提供的字段或标签，跳过该迁移，不要用 `--force` 掩盖错误。
