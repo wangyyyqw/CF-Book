@@ -24,7 +24,12 @@ export async function onRequestPost(context) {
   if (denied) return denied;
   const { env, request } = context;
   const body = await request.json().catch(() => ({}));
-  const limit = Math.min(Math.max(Number(body.limit) || 10, 1), 50);
+  const requestedLimit = Math.min(Math.max(Number(body.limit) || 10, 1), 50);
+  // 自定义 AI Provider 每本都是一次最长 45s 的外部调用，且含冒号的 model 不计入 Neurons 额度，
+  // 本地额度闸门拦不住。与分类接口口径一致：配置自定义 Provider 时每次只清洗一本，由前端循环驱动，
+  // 避免单次请求在 Worker 内串行跑满 50 本而超出 CPU/时长/子请求上限。
+  const providerConfig = await dbGet(env, 'SELECT id FROM ai_provider_config WHERE id = 1');
+  const limit = providerConfig ? 1 : requestedLimit;
   const offset = Math.max(Number(body.offset) || 0, 0);
   const force = body.force === true;
   // 本轮已尝试但失败的书；重跑时跳过，避免对确定性失败反复消耗额度。

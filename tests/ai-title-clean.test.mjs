@@ -166,6 +166,35 @@ test('非管理员不能清洗书名', async () => {
   assert.equal(response.status, 403);
 });
 
+test('配置自定义 Provider 时每次只清洗一本书', async () => {
+  const env = makeEnv();
+  // 配置自定义 Provider：含冒号的 model 不计 Neurons，必须靠批大小限流
+  await env.DB.prepare(`INSERT INTO ai_provider_config (id, format, base_url, model, encrypted_key, updated_at)
+    VALUES (1, 'openai', 'https://provider.example/v1', 'model', 'cipher', 0)`).run();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('chat/completions')) {
+      return new Response(JSON.stringify({ choices: [{ message: { content: '挽救计划' } }], usage: { prompt_tokens: 10, completion_tokens: 4 } }), { headers: { 'Content-Type': 'application/json' } });
+    }
+    return new Response('{}');
+  };
+  try {
+    const response = await onRequestPost({
+      ...ctx(env),
+      request: new Request('https://example.test/api/ai/title-clean', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 10 }),
+      }),
+    });
+    const data = await response.json();
+    assert.equal(data.batchLimit, 1, '自定义 Provider 下批大小应被压到 1');
+    assert.equal(data.processed, 1, '单次请求只处理一本书');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('未配置 AI 时清洗失败但接口不中断', async () => {
   const env = makeEnv();
   delete env.AI;
