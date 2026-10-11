@@ -39,6 +39,14 @@
           <fieldset id="standard-tags-picker" class="standard-tags-picker wide-field">
             <legend>标准标签（依次选择书籍类型、领域/题材、主题/设定）</legend>
             <div id="standard-tag-selects"></div>
+            <div class="tag-actions">
+              <button id="ai-classify-book" class="button-secondary" type="button" hidden>AI 生成标签</button>
+              <span id="ai-classify-msg" class="form-msg" aria-live="polite"></span>
+            </div>
+            <details id="ai-classify-debug" hidden>
+              <summary>模型响应与密钥轮换详情</summary>
+              <pre id="ai-classify-debug-content"></pre>
+            </details>
           </fieldset>
         </div>
         <div class="actions-row">

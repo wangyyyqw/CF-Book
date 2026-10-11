@@ -1,4 +1,4 @@
-import { api, escapeHtml } from '/api.js';
+import { api, escapeHtml, loadMe } from '/api.js';
 
 const id = new URLSearchParams(location.search).get('id');
 const fields = ['title', 'author', 'description', 'publisher', 'isbn', 'language', 'format'];
@@ -41,6 +41,8 @@ function message(text) {
 async function load() {
   if (!id) return message('缺少书籍 ID');
   $('back-book').href = `/book?id=${encodeURIComponent(id)}`;
+  const meData = await loadMe();
+  if (meData?.user?.role === 'admin') $('ai-classify-book').hidden = false;
   const res = await api(`/api/books/${encodeURIComponent(id)}`);
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) return message(`加载失败：${data.error || res.status}`);
@@ -70,6 +72,34 @@ $('cover-file').addEventListener('change', async () => {
   const res = await api(`/api/books/${encodeURIComponent(id)}/cover`, { method: 'POST', body: form });
   const data = await res.json().catch(() => ({}));
   message(res.ok && data.ok ? '✓ 封面已更新' : `封面上传失败：${data.error || res.status}`);
+});
+
+$('ai-classify-book').addEventListener('click', async () => {
+  const button = $('ai-classify-book');
+  button.disabled = true;
+  $('ai-classify-msg').textContent = '正在请求模型，仅处理当前书籍…';
+  $('ai-classify-debug').hidden = true;
+  try {
+    const res = await api(`/api/books/${encodeURIComponent(id)}/classify`, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    const result = data.result;
+    if (data.debug || result?.debug) {
+      $('ai-classify-debug-content').textContent = JSON.stringify(data.debug || result.debug, null, 2);
+      $('ai-classify-debug').hidden = false;
+      $('ai-classify-debug').open = true;
+    }
+    if (!res.ok || !data.ok) {
+      $('ai-classify-msg').textContent = `分类失败：${data.error || res.status}`;
+      return;
+    }
+    $('ai-classify-msg').textContent = `✓ 已完成：${result.title} · ${result.tags.join('、')}`;
+    // 分类会直接写库，重新载入让三个标准标签下拉同步最新结果
+    await load();
+  } catch (error) {
+    $('ai-classify-msg').textContent = `分类请求失败：${error.message}`;
+  } finally {
+    button.disabled = false;
+  }
 });
 
 $('delete').addEventListener('click', async () => {

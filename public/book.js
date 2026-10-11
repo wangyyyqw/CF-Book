@@ -9,8 +9,6 @@ const MAX_COMMENT_LENGTH = 500;
 
 let me = null;
 let multiUser = false;
-let tagDimensions = [];
-let tagSelects = [];
 let shelfOptions = [];
 let shelfSelection = new Set();
 
@@ -38,32 +36,6 @@ async function loadShelfPicker(selectedIds) {
       <span>${escapeHtml(shelf.name)}</span>
       <span class="shelf-scope">${shelf.scope === 'personal' ? '个人' : '共享'}</span>
     </label>`).join('');
-}
-
-async function loadTagOptions(selectedIds = []) {
-  const response = await api('/api/tags?include_unused=1');
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data.ok) throw new Error(data.error || '标签列表加载失败');
-  tagDimensions = data.dimensions || [];
-  const selected = new Set(selectedIds);
-  $('standard-tag-selects').innerHTML = '<label>书籍类型<select id="tag-type" required></select></label><label><span id="tag-second-label"></span><select id="tag-second" required></select></label><label><span id="tag-third-label"></span><select id="tag-third" required></select></label>';
-  tagSelects = [$('tag-type'), $('tag-second'), $('tag-third')];
-  fillTagSelect(tagSelects[0], tagDimensions.find((item) => item.dimension === 'book_type'), selected);
-  const updateDependent = (preserve) => {
-    const web = tagSelects[0].value === 'BOOK_TYPE_0002';
-    (web ? ['web_genre', 'web_element'] : ['pub_field', 'pub_topic']).forEach((key, index) => {
-      const dimension = tagDimensions.find((item) => item.dimension === key);
-      $(`tag-${index === 0 ? 'second' : 'third'}-label`).textContent = dimension?.name_zh || '';
-      fillTagSelect(tagSelects[index + 1], dimension, preserve ? selected : new Set());
-    });
-    selected.clear();
-  };
-  tagSelects[0].addEventListener('change', () => updateDependent(false));
-  updateDependent(true);
-}
-
-function fillTagSelect(select, dimension, selected) {
-  select.innerHTML = `<option value="">请选择</option>${(dimension?.tags || []).map((tag) => `<option value="${escapeHtml(tag.tag_id)}" ${selected.has(tag.tag_id) ? 'selected' : ''}>${escapeHtml(tag.name)} · ${escapeHtml(tag.category)}</option>`).join('')}`;
 }
 
 function renderCover(url) {
@@ -133,25 +105,16 @@ async function load() {
   $('f-favorite').checked = Boolean(b.my_favorite);
   $('f-comment').value = b.my_comment || '';
   updateCommentCount();
-  await loadTagOptions((b.tag_details || []).map((tag) => tag.tag_id));
   $('tag-groups').innerHTML = (b.tag_details || []).length
     ? (b.tag_details || []).map((tag) => `<span class="tag-chip">${escapeHtml(tag.name)}</span>`).join('')
-    : '<span class="muted">暂无标签，请在下方手动添加</span>';
-  if (tagSelects.length) {
-    const selectedIds = (b.tag_details || []).map((tag) => tag.tag_id);
-    selectedIds.forEach((tagId, index) => { if (tagSelects[index]) tagSelects[index].value = tagId; });
-  }
+    : '<span class="muted">暂无标签，可在“修改书籍”中整理</span>';
   renderRatings(b);
   $('cover-placeholder').textContent = (b.title || '书').trim().slice(0, 2);
   renderCover(b.cover || '');
   $('download').dataset.uploadId = b.upload_id || '';
   $('download').dataset.filename = b.file_name || b.title || 'download';
   await loadShelfPicker(b.shelf_ids || []);
-  if (me?.role === 'admin') {
-    $('edit-book').hidden = false;
-    $('ai-classify-book').hidden = false;
-    $('ai-classify-panel').hidden = false;
-  }
+  if (me?.role === 'admin') $('edit-book').hidden = false;
 }
 
 $('save-state').addEventListener('click', async () => {
@@ -162,11 +125,21 @@ $('save-state').addEventListener('click', async () => {
       rating: Number($('f-rating').value) || 0,
       status: $('f-status').value,
       isFavorite: $('f-favorite').checked,
-      comment: $('f-comment').value,
     }),
   });
   const data = await res.json().catch(() => ({}));
   $('state-msg').textContent = res.ok && data.ok ? '✓ 已保存' : `保存失败：${data.error || res.status}`;
+  if (res.ok && data.ok) await load();
+});
+
+$('save-comment').addEventListener('click', async () => {
+  const res = await api(`/api/books/${id}/state`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ comment: $('f-comment').value }),
+  });
+  const data = await res.json().catch(() => ({}));
+  $('comment-msg').textContent = res.ok && data.ok ? '✓ 笔记已保存' : `保存失败：${data.error || res.status}`;
   if (res.ok && data.ok) await load();
 });
 
@@ -195,19 +168,6 @@ $('save-shelves').addEventListener('click', async () => {
   await load();
 });
 
-$('tags-form').addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const tagIds = tagSelects.map((select) => select.value);
-  const res = await api(`/api/books/${id}/tags`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tagIds }),
-  });
-  const data = await res.json().catch(() => ({}));
-  $('tags-msg').textContent = res.ok && data.ok ? '✓ 标签已保存' : `保存失败：${data.error || res.status}`;
-  if (res.ok && data.ok) await load();
-});
-
 $('download').addEventListener('click', () => {
   const uploadId = $('download').dataset.uploadId;
   if (!uploadId) {
@@ -229,33 +189,6 @@ $('download').addEventListener('click', () => {
 
 $('edit-book').addEventListener('click', () => {
   location.href = `/edit?id=${encodeURIComponent(id)}`;
-});
-
-$('ai-classify-book').addEventListener('click', async () => {
-  const button = $('ai-classify-book');
-  button.disabled = true;
-  $('ai-classify-msg').textContent = '正在请求模型，仅处理当前书籍…';
-  $('ai-classify-debug').hidden = true;
-  try {
-    const res = await api(`/api/books/${encodeURIComponent(id)}/classify`, { method: 'POST' });
-    const data = await res.json().catch(() => ({}));
-    const result = data.result;
-    if (data.debug || result?.debug) {
-      $('ai-classify-debug-content').textContent = JSON.stringify(data.debug || result.debug, null, 2);
-      $('ai-classify-debug').hidden = false;
-      $('ai-classify-debug').open = true;
-    }
-    if (!res.ok || !data.ok) {
-      $('ai-classify-msg').textContent = `分类失败：${data.error || res.status}`;
-      return;
-    }
-    $('ai-classify-msg').textContent = `✓ 已完成：${result.title} · ${result.tags.join('、')}`;
-    await load();
-  } catch (error) {
-    $('ai-classify-msg').textContent = `分类请求失败：${error.message}`;
-  } finally {
-    button.disabled = false;
-  }
 });
 
 async function init() {

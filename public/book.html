@@ -36,7 +36,6 @@
           <p class="book-meta" id="book-meta"></p>
 
           <div class="book-tag-summary">
-            <p class="book-section-label">共享分类</p>
             <div id="tag-groups" class="tag-groups"></div>
           </div>
 
@@ -52,12 +51,18 @@
               </select>
             </label>
             <label class="favorite-toggle"><input id="f-favorite" type="checkbox" /> 我的收藏</label>
-            <label class="comment-field">我的评论/笔记
-              <textarea id="f-comment" maxlength="500" rows="3" placeholder="写下你的想法，最多 500 字（仅作记录，所有账号可见）"></textarea>
-              <span id="comment-count" class="comment-count">0 / 500</span>
-            </label>
             <button id="save-state">保存我的评分</button>
             <span id="state-msg" class="form-msg"></span>
+          </div>
+
+          <div class="comment-box">
+            <label class="comment-field" for="f-comment">我的评论/笔记</label>
+            <textarea id="f-comment" maxlength="500" rows="3" placeholder="写下你的想法，最多 500 字（仅作记录，所有账号可见）"></textarea>
+            <div class="comment-actions">
+              <button id="save-comment">保存笔记</button>
+              <span id="comment-count" class="comment-count">0 / 500</span>
+              <span id="comment-msg" class="form-msg"></span>
+            </div>
           </div>
 
           <div class="ratings-box">
@@ -80,25 +85,6 @@
         <div class="actions-row">
           <button id="save-shelves">保存书架</button>
           <span id="shelves-msg" class="form-msg"></span>
-        </div>
-      </section>
-
-      <section class="panel book-tag-editor">
-        <h2>整理共享标签</h2>
-        <form id="tags-form" class="inline-form standard-tags-picker">
-          <div id="standard-tag-selects"></div>
-          <div class="tag-actions">
-            <button type="submit" class="button-primary">保存标签</button>
-            <button id="ai-classify-book" class="button-secondary" type="button" hidden>AI 生成标签</button>
-          </div>
-          <span id="tags-msg" class="form-msg"></span>
-          <span id="ai-classify-msg" class="form-msg" aria-live="polite"></span>
-        </form>
-        <div id="ai-classify-panel" hidden>
-          <details id="ai-classify-debug" hidden>
-            <summary>模型响应与密钥轮换详情</summary>
-            <pre id="ai-classify-debug-content"></pre>
-          </details>
         </div>
       </section>
 

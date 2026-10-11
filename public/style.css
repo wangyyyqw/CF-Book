@@ -970,7 +970,7 @@ body.library-page.library-dark {
   color: var(--ink);
 }
 
-.library-dark .state-row .comment-field textarea {
+.library-dark .comment-box textarea {
   border-color: #625d54;
   background: #282724;
   color: var(--ink);
@@ -1111,21 +1111,11 @@ body.library-page.library-dark .shell > .panel {
   letter-spacing: 0.04em;
 }
 
-.book-section-label {
-  margin: 0 0 0.3rem;
-  color: var(--accent);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-}
-
 .book-tag-summary {
-  padding: 0.7rem 0.8rem 0.35rem;
-  border-left: 2px solid var(--accent);
-  background: rgba(189, 59, 46, 0.035);
+  padding: 0.35rem 0;
 }
 
-.book-tag-summary .tag-groups { margin: 0; }
+.book-tag-summary .tag-groups { margin: 0; justify-content: center; }
 
 .book-fields {
   flex: 1;
@@ -1197,13 +1187,10 @@ body.library-page.library-dark .shell > .panel {
   background: var(--control-bg);
 }
 
-.book-tag-editor h2 { margin-top: 0; }
-.tag-actions { display: flex; flex-wrap: wrap; gap: 0.55rem; }
-.tag-actions .button-primary { background: var(--ink); color: var(--panel); }
+.tag-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem; margin-top: 0.8rem; }
 .tag-actions .button-secondary { border-color: var(--accent); color: var(--accent); }
 .tag-actions button { min-height: 44px; padding: 0.6rem 1rem; }
-.book-tag-editor .standard-tags-picker { display: grid; gap: 0.8rem; }
-.book-tag-editor #ai-classify-debug { grid-column: 1 / -1; }
+#standard-tags-picker #ai-classify-debug { margin-top: 0.6rem; }
 
 @media (max-width: 560px) {
   .library-page .topbar { padding-inline: 1rem; }
@@ -1236,11 +1223,20 @@ body.library-page.library-dark .shell > .panel {
   width: auto;
 }
 
-.state-row .comment-field {
-  flex: 1 1 100%;
+.comment-box {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.9rem;
+  border: 1px solid var(--border);
+  background: var(--control-bg);
 }
 
-.state-row .comment-field textarea {
+.comment-box .comment-field {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.comment-box textarea {
   width: 100%;
   min-height: 3.4rem;
   padding: 0.5rem 0.6rem;
@@ -1253,10 +1249,14 @@ body.library-page.library-dark .shell > .panel {
   resize: vertical;
 }
 
-.state-row .comment-count {
-  display: block;
-  margin-top: 0.2rem;
-  text-align: right;
+.comment-box .comment-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.comment-box .comment-count {
   font-size: 0.72rem;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
