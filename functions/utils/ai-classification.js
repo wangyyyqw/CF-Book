@@ -445,16 +445,6 @@ export function normalizeResult(text, bookId, fallbackTitle = '', author = '', s
   return { ...normalizeStandardTagResult(text, bookId), title };
 }
 
-function isPlausibleTitle(candidate, original, author = '') {
-  if (!candidate || /^(清理后的书名|书名|未知书名|未命名)$/i.test(candidate)) return false;
-  const source = String(original || '').replace(/\.[^.]+$/, '').trim();
-  if (!source) return true;
-  if (author && candidate.includes(author.replace(/[（(].*$/, '').trim())) return false;
-  const overlap = [...new Set(candidate.replace(/[^\p{L}\p{N}]/gu, ''))]
-    .filter((char) => source.includes(char)).length;
-  return overlap >= Math.min(2, candidate.length);
-}
-
 function cleanTitleFallback(title) {
   return String(title || '未命名')
     .replace(/\s*[（(\[][^）)\]]*(?:套装|上下册|全套|插图|珍藏|精装|电子版|扫描版|网盘)[^）)\]]*[）)\]]/gi, '')

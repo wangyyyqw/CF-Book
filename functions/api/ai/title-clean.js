@@ -1,5 +1,5 @@
 import { json, err } from '../../utils/http.js';
-import { dbAll, dbGet, dbRun, nowSec } from '../../utils/db.js';
+import { dbAll, dbGet, nowSec } from '../../utils/db.js';
 import { requireAdmin } from '../../utils/auth.js';
 import { cleanBookTitle, dailyLimit, usedAiNeuronsToday } from '../../utils/ai-classification.js';
 
