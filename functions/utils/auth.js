@@ -8,6 +8,11 @@ export const SESSION_COOKIE = 'cfbook_session';
 export const USERNAME_RE = /^[A-Za-z0-9_.-]{2,32}$/;
 export const MIN_PASSWORD_LENGTH = 6;
 
+// 定格的无效口令哈希：用户不存在或被停用时，用它跑一次等价的 PBKDF2，
+// 让响应时延与真实账号一致，避免用计时差异枚举有效用户名。
+export const DUMMY_PASSWORD_HASH =
+  `pbkdf2$${PBKDF2_ITERATIONS}$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=`;
+
 const encoder = new TextEncoder();
 
 function bytesToB64(bytes) {

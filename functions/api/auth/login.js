@@ -1,6 +1,6 @@
 import { err, jsonWithCookies } from '../../utils/http.js';
 import { dbGet } from '../../utils/db.js';
-import { verifyPassword, createSession, sessionCookie, isSecureRequest } from '../../utils/auth.js';
+import { verifyPassword, createSession, sessionCookie, isSecureRequest, DUMMY_PASSWORD_HASH } from '../../utils/auth.js';
 import {
   loginAttemptKeys,
   loginLockRemaining,
@@ -27,12 +27,11 @@ export async function onRequestPost(context) {
   }
 
   const user = await dbGet(env, 'SELECT * FROM users WHERE username = ?', username);
-  // 用户不存在与密码错误返回同样的提示，避免暴露账号是否存在
-  if (!user || user.disabled) {
-    await recordLoginFailure(env, keys);
-    return err('用户名或密码不正确', 401);
-  }
-  if (!(await verifyPassword(password, user.password_hash))) {
+  // 用户不存在/被停用时也跑一次等价 PBKDF2，保持响应时延一致，避免用计时差异枚举用户名
+  const passwordHash = user && !user.disabled ? user.password_hash : DUMMY_PASSWORD_HASH;
+  const passwordOk = await verifyPassword(password, passwordHash);
+  // 用户不存在、被停用或密码错误都返回同样的提示，避免暴露账号是否存在
+  if (!user || user.disabled || !passwordOk) {
     await recordLoginFailure(env, keys);
     return err('用户名或密码不正确', 401);
   }
