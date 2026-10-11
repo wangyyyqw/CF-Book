@@ -26,7 +26,10 @@ function makeEnv({ withData = true } = {}) {
        VALUES ('b1', 'up1', '书一', '作者', '简介', '', 'epub', '', '', '', 'book.epub', 20, 'abc', 'admin', 1, 1);
        INSERT INTO book_user_state (book_id, user_id, rating, status, is_favorite, updated_at)
        VALUES ('b1', 'u1', 9, 'read', 1, 1);
-       INSERT INTO book_standard_tags (book_id, tag_id) VALUES ('b1', 'BOOK_TYPE_0001');`
+       INSERT INTO book_standard_tags (book_id, tag_id) VALUES ('b1', 'BOOK_TYPE_0001');
+       INSERT INTO shelves (id, name, description, scope, owner, created_by, sort_order, created_at, updated_at)
+       VALUES ('sh1', '待读', '', 'shared', '', 'admin', 0, 1, 1);
+       INSERT INTO shelf_books (shelf_id, book_id, added_by, added_at) VALUES ('sh1', 'b1', 'admin', 1);`
     );
   }
   return { DB, BACKUP_KEY: '测试密钥-test-key' };
@@ -61,6 +64,10 @@ test('导出包含书目、账号、标签、评分状态与 Telegram 分块索�
   assert.equal(backup.tables.book_user_state[0].rating, 9);
   assert.equal(backup.tables.books[0].title_cleaned_at, 0, '备份应包含书名清洗标记');
   assert.equal(backup.counts.chunks, 2);
+  assert.equal(backup.tables.shelves.length, 1, '备份必须带上用户自建书架');
+  assert.equal(backup.tables.shelves[0].id, 'sh1');
+  assert.equal(backup.tables.shelf_books.length, 1, '备份必须带上书架成员关系');
+  assert.equal(backup.tables.shelf_books[0].book_id, 'b1');
 });
 
 test('默认导出为加密信封，只有正确的 BACKUP_KEY 能解开', async () => {
@@ -117,6 +124,19 @@ test('replace 模式覆盖当前库，merge 模式只补齐不删除', async () 
   assert.deepEqual(after, ['书一'], 'replace 应只保留备份中的数据');
   const chunks = await env.DB.prepare('SELECT COUNT(*) AS n FROM chunks').first();
   assert.equal(chunks.n, 2);
+});
+
+test('replace 恢复会重建书架与成员关系，不丢失用户自建书架', async () => {
+  const env = makeEnv();
+  const backup = await exportTables(env);
+  // 模拟备份后书架被清空：恢复应把它们找回来
+  env.DB.exec('DELETE FROM shelf_books; DELETE FROM shelves;');
+
+  await restoreBackup(ctx(env, { body: { backup, mode: 'replace' } }));
+  const shelves = (await env.DB.prepare('SELECT id, name FROM shelves').all()).results;
+  assert.deepEqual(shelves.map((s) => s.id), ['sh1']);
+  const links = (await env.DB.prepare('SELECT shelf_id, book_id FROM shelf_books').all()).results;
+  assert.deepEqual(links.map((row) => ({ shelf_id: row.shelf_id, book_id: row.book_id })), [{ shelf_id: 'sh1', book_id: 'b1' }]);
 });
 
 test('加密备份可以直接用于预览与恢复', async () => {

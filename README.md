@@ -178,7 +178,7 @@ curl -H "x-admin-token: $ADMIN_TOKEN" \
   "https://cf-book.pages.dev/api/backup/export?encrypt=0" -o backup-plain.json
 ```
 
-备份固定包含书目、账号、标签、评分与阅读状态，以及 `uploads` / `chunks` 两张表——后者是 Telegram 原文件在 D1 里的索引，和书目必须成对保存，只备份书目会导致恢复后有书却没有原文件。
+备份固定包含书目、账号、标签、评分与阅读状态、自定义书架（`shelves` / `shelf_books`），以及 `uploads` / `chunks` 两张表——后者是 Telegram 原文件在 D1 里的索引，和书目必须成对保存，只备份书目会导致恢复后有书却没有原文件。
 
 恢复有两种模式：`merge` 只补齐备份中的数据，`replace` 先清空上述表再按备份重建。恢复过程只写 D1，不会删除或覆盖 Telegram 中的分块，也不会改动 R2 封面；因此恢复后请确认 Telegram 频道里对应的分块仍然存在（可在上传任务中心对单个任务执行“重新校验”）。恢复是幂等的，中途失败重新执行同一份备份即可收敛。
 
