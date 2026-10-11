@@ -166,6 +166,27 @@ export async function extractCoverFromMeta(meta) {
       if (found) coverName = found.name;
     }
 
+    // 多看等制作工具用 OPF2 <guide><reference type="cover" href="..."/> 声明封面页，
+    // 封面图常是纯数字文件名（如 Images/92.jpg），靠上面的文件名回退都命不中。
+    // 按 guide 指向的页面取首个 <img>：本地图走 ZIP 提取，外链交给后端抓取。
+    if (!coverName) {
+      const guideHref = guideCoverHref(opf);
+      const guideEntry = guideHref ? resolveEntry(entries, guideHref, meta._opfDir) : null;
+      if (guideEntry) {
+        if (/\.(png|jpe?g|gif|webp)$/i.test(guideEntry.name)) {
+          coverName = guideEntry.name;
+        } else if (/\.(xhtml|html|htm)$/i.test(guideEntry.name)) {
+          const html = strFromU8(await readEntry(file, guideEntry));
+          const image = html.match(/<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/i);
+          if (image?.[1]) {
+            const source = decodeXmlEntities(image[1].trim());
+            if (/^https?:\/\//i.test(source)) return { url: source };
+            coverName = resolvePath(guideEntry.name, source);
+          }
+        }
+      }
+    }
+
     // 部分微信读书 EPUB 没有 OPF cover 声明，只在 cover.xhtml 中放外链图片。
     // 先尝试常见封面页，内部图片仍走本地 ZIP 提取，外链交给后端抓取以绕过 CORS。
     if (!coverName) {
@@ -235,6 +256,29 @@ function resolvePath(pageName, href) {
     else base.push(part);
   }
   return base.join('/');
+}
+
+// 取 OPF2 <guide> 中 type="cover" 的 reference href（多看等工具用它声明封面页）
+function guideCoverHref(opf) {
+  const guide = opf.match(/<guide\b[\s\S]*?<\/guide>/i)?.[0];
+  if (!guide) return '';
+  for (const tag of guide.match(/<reference\b[^>]*>/gi) || []) {
+    const type = (tag.match(/\btype\s*=\s*["']([^"']+)["']/i) || [])[1];
+    if (!type || type.trim().toLowerCase() !== 'cover') continue;
+    const href = (tag.match(/\bhref\s*=\s*["']([^"']+)["']/i) || [])[1];
+    if (href) return href.trim();
+  }
+  return '';
+}
+
+// href 相对 OPF 目录解析为 ZIP 条目，兼容 ../ 与 URL 编码
+function resolveEntry(entries, href, opfDir) {
+  const decoded = decodeZipHref(href).replace(/\\/g, '/');
+  const candidates = new Set([
+    normalizeZipPath(decoded),
+    normalizeZipPath(`${opfDir}${decoded}`),
+  ]);
+  return entries.find((e) => candidates.has(normalizeZipPath(e.name))) || null;
 }
 
 function normalizeZipPath(path) {

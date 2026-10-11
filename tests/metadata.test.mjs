@@ -65,6 +65,62 @@ test('封面 href 使用 ../ 返回 EPUB 压缩包根目录时仍可提取', asy
   assert.deepEqual(cover?.bytes, expected);
 });
 
+// 多看（Duokan）制作：无 meta cover / 无 properties="cover-image"，封面走 <guide type="cover">，
+// 封面图文件名是纯数字，靠文件名回退命不中。
+function epubWithGuideCover({ imageName = 'Images/92.jpg', imageBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]), imgSrc } = {}) {
+  const files = {
+    mimetype: new Uint8Array(strToU8('application/epub+zip')),
+    'META-INF/container.xml': strToU8(
+      '<container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>'
+    ),
+    'OEBPS/content.opf': strToU8(
+      '<package><metadata><dc:title xmlns:dc="x">地铁三部曲</dc:title></metadata>' +
+        '<manifest><item id="x_inserted" href="Text/15.xhtml" media-type="application/xhtml+xml"/>' +
+        `<item id="coverpage.jpg" href="${imageName}" media-type="image/jpeg"/></manifest>` +
+        '<spine><itemref idref="x_inserted"/></spine>' +
+        '<guide><reference type="cover" title="Cover" href="Text/15.xhtml"/></guide></package>'
+    ),
+    'OEBPS/Text/15.xhtml': strToU8(
+      `<html><body><img alt="coverpage" src="${imgSrc ?? `../${imageName}`}"/></body></html>`
+    ),
+    [`OEBPS/${imageName}`]: imageBytes,
+  };
+  return new File([zipSync(files)], 'duokan.epub');
+}
+
+test('多看 EPUB 用 guide type="cover" 声明封面页时，按页面内 img 提取数字文件名封面', async () => {
+  const expected = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+  const cover = await extractCoverFromFile(epubWithGuideCover({ imageBytes: expected }), 'duokan.epub');
+  assert.equal(cover?.mime, 'image/jpeg');
+  assert.deepEqual(cover?.bytes, expected);
+});
+
+test('多看 guide 指向的封面页使用外链图片时返回 url', async () => {
+  const cover = await extractCoverFromFile(
+    epubWithGuideCover({ imgSrc: 'https://example.com/duokan-cover.jpg?a=1&amp;b=2' }),
+    'duokan.epub'
+  );
+  assert.deepEqual(cover, { url: 'https://example.com/duokan-cover.jpg?a=1&b=2' });
+});
+
+test('多看 guide 的 cover 引用可直接指向图片文件', async () => {
+  const expected = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+  const files = {
+    mimetype: new Uint8Array(strToU8('application/epub+zip')),
+    'META-INF/container.xml': strToU8(
+      '<container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>'
+    ),
+    'OEBPS/content.opf': strToU8(
+      '<package><manifest><item id="coverpage.jpg" href="Images/92.png" media-type="image/png"/></manifest>' +
+        '<guide><reference type="cover" href="Images/92.png"/></guide></package>'
+    ),
+    'OEBPS/Images/92.png': expected,
+  };
+  const cover = await extractCoverFromFile(new File([zipSync(files)], 'duokan-img.epub'), 'duokan-img.epub');
+  assert.equal(cover?.mime, 'image/png');
+  assert.deepEqual(cover?.bytes, expected);
+});
+
 test('MOBI 按记录目录定位头部，优先使用 EXTH 的中文书名而非数据库内部名称', async () => {
   const bytes = kindleFile();
   const meta = await extractFileMetadata(new File([bytes], '错误文件名.mobi'), '错误文件名.mobi');
