@@ -14,12 +14,14 @@ export async function onRequest(context) {
     return new Response(null, { status: 204, headers: corsHeaders() });
   }
 
+  // 接口按前缀判定，绝不走后缀启发式，避免带点号的路径参数被误判为静态资源而跳过鉴权
+  const isApi = path.startsWith('/api');
   // 页面 = 无扩展名的 GET 路径或 .html；静态资源（.css/.js/.ico 等）不参与鉴权
-  const isAsset = /\.[A-Za-z0-9]+$/.test(path) && !path.endsWith('.html');
-  const isDocument = request.method === 'GET' && !path.startsWith('/api') && !isAsset;
+  const isAsset = !isApi && /\.[A-Za-z0-9]+$/.test(path) && !path.endsWith('.html');
+  const isDocument = request.method === 'GET' && !isApi && !isAsset;
   const needsPageAuth = isDocument && !PUBLIC_PAGES.has(path);
   const needsApiAuth =
-    path.startsWith('/api') && !isAsset && !path.startsWith('/api/covers/') && !PUBLIC_API.has(path);
+    isApi && !path.startsWith('/api/covers/') && !PUBLIC_API.has(path);
 
   // 静态资源不查库，只在页面与受保护接口上解析登录态
   if (needsPageAuth || needsApiAuth) {
