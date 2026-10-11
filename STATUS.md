@@ -13,6 +13,7 @@
 - 本次（2026-10-11 续）将书库统计从账号管理页拆成独立页（`4bf45f7`，已推 `origin/main`），并完成一轮 Cloudflare 部署：Pages 重新部署（`de44b37e`）、新建 R2 备份桶 `cf-book-backups`、部署定时备份 Worker `cf-book-backup-cron` 并配置 `ADMIN_TOKEN` secret。全量测试 189 项通过，本机 Playwright 响应式验收 509/509 通过（9 页 × 7 宽）。
 - 本次（2026-10-11 再续）按详情页浏览器批注重整并再次部署（`0256356`）：评论/笔记独立成框并单独保存、删除详情页标签编辑面板、AI 生成标签迁入编辑页、去掉“共享分类”标题与左竖线、只读标签居中。重新部署定时备份 Worker `cf-book-backup-cron`（回填真实 `CF_BOOK_URL`/桶名后 `wrangler deploy`，`ADMIN_TOKEN` secret 已在）与 Pages（`https://9a3ed841.cf-book.pages.dev`，主域 `cf-book.pages.dev`）。全量测试 189 项通过，本机 Playwright 响应式 509/509 通过。
 - 本次（2026-10-11 审计修复）按一轮只读审计逐项修复 7 处问题（未部署）：删除书籍/删除用户补齐孤儿清理；备份纳入 `shelves`/`shelf_books`；中间件鉴权改前缀判定；登录对不存在/停用账号做等价 PBKDF2 校验；封面外链 SSRF 校验复用严格 IPv6 判定；`/api/books/:id/tags` 收敛为仅管理员；删除未用导入与死代码。全量测试 189→202 项通过。
+- 本次（2026-10-11 审计续修）在前述基础上再修 2 处（已推 `origin/main`，未部署）：批量书名清洗按自定义 Provider 限流为每次一本（`ee11d3a`）；外链封面边读边截断避免谎报 `content-length` 读满内存（`cab9c1e`）。全量测试 202→204 项通过。另记录 3 处经复核判定为可接受/仅文档化的事项（见"已知风险"）。
 
 ## 一、架构健康度
 
@@ -35,6 +36,11 @@
   - 标签端点（`functions/api/books/[id]/tags.js`）：`PUT` 增加 `requireAdmin`，与编辑页口径一致；新增 `book-tags-api` 测试。
   - 死代码清理：移除 `classify.js`/`title-clean.js` 未用的 `dbRun` 导入与 `ai-classification.js` 未调用的 `isPlausibleTitle`。
   - 验证：`npm test` 202 项通过（新增 middleware 5、login-api 4、book-tags-api 2、backup +2），`node --check` 与 `git diff --check` 无告警；未部署、未在真实 Cloudflare 运行时验证。
+
+- 本次（2026-10-11 审计续修）后端健壮性修复，未部署：
+  - 批量书名清洗限流（`functions/api/ai/title-clean.js`，提交 `ee11d3a`）：原 `limit` 最高 50 且在 Worker 内串行逐本调用（每本最长 45s + 退避重试），自定义 Provider 的含冒号 model 又不计 Neurons 使额度闸门失效，单次 POST 可能超出 Workers CPU/时长/子请求上限。改为与 `/api/ai/classify` 口径一致：配置自定义 Provider 时每次只清洗一本，由前端循环驱动；新增“配置自定义 Provider 时每次只清洗一本书”测试。
+  - 外链封面读取限额（`functions/api/books/[id]/cover.js`，提交 `cab9c1e`）：原先缺少/谎报 `content-length` 时先整体 `arrayBuffer()` 再判大小，超大响应会被完整读入内存。改为按 8MB 上限边读边累计，超限立即 `cancel` 并返回 400；新增超限截断测试。
+  - 验证：`npm test` 204 项通过（title-clean +1、cover +1），`node --check` 与 `git diff --check` 无告警；未部署、未在真实 Cloudflare 运行时验证。
 
 - 本次（2026-10-11 再续）详情页批注重整与再部署：
   - 评论独立（批注1）：`public/book.html` 把 `#f-comment`/`#comment-count` 从 `.state-row` 移到新 `.comment-box`，加 `#save-comment`/`#comment-msg`；`public/book.js` 的保存评分不再带 comment、新增“保存笔记”只提交 `{ comment }`（state 接口对未传字段读 existing，分区互不覆盖）。
@@ -82,6 +88,12 @@
 - 迁移状态：线上已执行到 `0014_shelves.sql`；`schema.sql` 已同步 `shelves` / `shelf_books`。
 
 ## 三、已知风险
+
+- 审计经复核判定为可接受或仅文档化的事项（本轮未改代码）：
+  - 封面接口 `/api/covers/:key` 对未登录放行（`functions/_middleware.js` 显式放行、`functions/api/covers/[key].js` 不校验登录态）。key 为 `covers/<bookId>.<ext>`，`bookId` 是不可枚举的 UUIDv4，实际风险低；这是私库里唯一一处未授权可读的书目内容，属 `<img>` 不便带鉴权头的设计取舍。
+  - 明文备份导出含用户口令哈希：`/api/backup/export?encrypt=0` 输出的 `users` 行含 PBKDF2 `password_hash`。需管理员显式加参数（默认与定时 Worker 均走 `BACKUP_KEY` 加密），仍属敏感物料，明文备份须妥善保管。
+  - 删除用户不清理历史归属字段：`books.created_by`/`uploads.owner` 仍保留用户名字符串，删除后以同名重建账号会“继承”旧书的编辑/完成权限。小型私库下影响小，属设计取舍。
+  - CORS 全局 `Access-Control-Allow-Origin: *`：会话走 `SameSite=Lax` Cookie 且响应无 `Allow-Credentials`，跨站既发不出 Cookie 也读不到带凭据响应，写操作均为非 GET，等于自带 CSRF 防护；收敛同源白名单属加固项而非必需。
 
 - 定时备份 Worker（`cf-book-backup-cron`）的 `ADMIN_TOKEN` 与 Pages 当前值一致（已用正确令牌手动触发成功）；若日后在 Pages 轮换 `ADMIN_TOKEN`，必须同步执行 `wrangler secret put ADMIN_TOKEN`（在 `workers/backup-cron/` 外、无占位 toml 干扰的目录，或带 `--name cf-book-backup-cron`），否则定时导出会 401。备份桶 `cf-book-backups` 仅保留最近 `KEEP_BACKUPS`（默认 14）份，更久的会被自动清理。
 - `/stats` 为管理员页：中间件对无登录态的页面统一 302 跳 `/login`，非管理员登录后由 `stats.js` 前端提示“仅管理员可查看书库统计”，但 `/api/library/stats` 的真正鉴权在后端 `requireAdmin`（401/403），前端提示仅为体验层。
