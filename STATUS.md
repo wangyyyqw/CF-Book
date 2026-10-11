@@ -14,6 +14,7 @@
 - 本次（2026-10-11 再续）按详情页浏览器批注重整并再次部署（`0256356`）：评论/笔记独立成框并单独保存、删除详情页标签编辑面板、AI 生成标签迁入编辑页、去掉“共享分类”标题与左竖线、只读标签居中。重新部署定时备份 Worker `cf-book-backup-cron`（回填真实 `CF_BOOK_URL`/桶名后 `wrangler deploy`，`ADMIN_TOKEN` secret 已在）与 Pages（`https://9a3ed841.cf-book.pages.dev`，主域 `cf-book.pages.dev`）。全量测试 189 项通过，本机 Playwright 响应式 509/509 通过。
 - 本次（2026-10-11 审计修复）按一轮只读审计逐项修复 7 处问题（未部署）：删除书籍/删除用户补齐孤儿清理；备份纳入 `shelves`/`shelf_books`；中间件鉴权改前缀判定；登录对不存在/停用账号做等价 PBKDF2 校验；封面外链 SSRF 校验复用严格 IPv6 判定；`/api/books/:id/tags` 收敛为仅管理员；删除未用导入与死代码。全量测试 189→202 项通过。
 - 本次（2026-10-11 审计续修）在前述基础上再修 2 处（已推 `origin/main`，未部署）：批量书名清洗按自定义 Provider 限流为每次一本（`ee11d3a`）；外链封面边读边截断避免谎报 `content-length` 读满内存（`cab9c1e`）。全量测试 202→204 项通过。另记录 3 处经复核判定为可接受/仅文档化的事项（见"已知风险"）。
+- 本次（2026-10-11 部署与封面修复）把上述审计修复与多看封面适配部署到真实 Cloudflare Pages：Pages 重新部署（`e5699534`、`fe9b7c54`，主域 `cf-book.pages.dev`），线上核对分批限流与超大外链封面拦截均生效；新增多看（Duokan）EPUB 封面提取规则（`375b139`），全量测试 204→207 项通过。
 
 ## 一、架构健康度
 
@@ -25,6 +26,14 @@
 - 本次新增现有图书批量清洗接口与管理页入口，沿用同一套 AI 配置，不新增生产依赖；新增迁移 `0015_title_clean.sql`。
 
 ## 二、变更影响范围
+
+- 本次（2026-10-11 部署与多看封面适配）：
+  - 生产部署：把已推送的审计修复（含 `ee11d3a` 分批限流、`cab9c1e` 封面截断）随当前 `main` 部署到 Pages（`e5699534`，主域 `cf-book.pages.dev`），修复前线上为 `0256356`（旧代码）。临时回填 `wrangler.toml` 真实 D1/R2 后 `wrangler pages deploy public --project-name cf-book`，完成后 `apply_patch` 还原占位符，工作区无残留。
+  - 线上核对（修复①）：部署前 `POST /api/ai/title-clean {"limit":7}` 返回 `batchLimit:7`（旧行为）；部署后 `limit:10`/`limit:50` 均返回 `batchLimit:1`，与 `configured:true` 一致。生产 `pending:0`，未消耗 AI 调用，未观察逐本运行。
+  - 线上核对（修复②）：`sourceUrl` 指向带 `content-length` 的 9MB 文件返回 400「封面不能超过 8MB」；用一次性探针 Worker（流式 10MB、无 `content-length`）触发边读边截断分支同样返回 400；测试书封面与 `cover` 字段未被改动，探针 Worker 用后已删除。
+  - 多看封面适配（`public/metadata.js`，提交 `375b139`）：多看制作的 EPUB 用 OPF2 `<guide><reference type="cover" href="..."/>` 声明封面页，封面图常为纯数字文件名（如 `Images/92.jpg`），既无 `<meta name="cover">` 也无 `properties="cover-image"`，原四条回退路径全部落空导致 `cover` 为空。新增 guide 回退：按 `type="cover"` 的 href 解析 ZIP 条目，指向图片直接取用，指向 xhtml 则取首个 `<img>`（本地图走 ZIP 提取，外链返回 `url`）；新增 `guideCoverHref`/`resolveEntry` 辅助函数。
+  - 数据修复：对缺封面的《地铁三部曲》（`5840ea6f-4e7b-4f98-acd2-be9f8f3a36aa`）从 EPUB 提取 `OEBPS/Images/92.jpg` 并上传封面，线上封面端点恢复 200，全库缺封面由 1→0。
+  - 验证：`node --test tests/` 207 项通过（metadata +3 多看用例）；`node --check public/metadata.js`、`git diff --check` 无告警；真实《地铁三部曲》EPUB 复核可提取 1483441 字节 JPEG 封面；线上 `metadata.js` 已含 `guideCoverHref`。
 
 - 本次（2026-10-11 审计修复）后端安全/一致性修复，未部署：
   - 删除书籍（`functions/api/books/[id].js`）：在原有清理基础上补 `DELETE FROM shelf_books WHERE book_id=?` 与 `DELETE FROM ai_classifications WHERE book_id=?`，消除书架 `book_count` 虚高与孤儿分类记录；`book-delete` 测试加断言。
