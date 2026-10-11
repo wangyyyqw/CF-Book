@@ -1,5 +1,6 @@
 import { json, err } from '../../../utils/http.js';
 import { dbGet, dbRun, nowSec } from '../../../utils/db.js';
+import { isLocalHostname } from '../../../utils/ai-provider.js';
 
 const MAX_COVER = 8 * 1024 * 1024;
 
@@ -74,23 +75,11 @@ async function fetchCoverUrl(sourceUrl) {
 function validateCoverUrl(url) {
   if (!/^https?:$/.test(url.protocol)) throw new Error('封面 URL 必须使用 HTTP 或 HTTPS');
   if (url.username || url.password) throw new Error('封面 URL 不支持账号密码');
-  const host = url.hostname.toLowerCase();
-  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) {
-    throw new Error('封面 URL 不能指向本地地址');
+  // 复用 AI Provider 的严格本机/内网判定：覆盖 IPv4 私网、IPv6 环回/ULA/链路本地与 IPv4-mapped IPv6
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (host.endsWith('.internal') || isLocalHostname(host)) {
+    throw new Error('封面 URL 不能指向本机或内网地址');
   }
-  if (isPrivateIpv4(host) || host === '::1' || host === '[::1]') {
-    throw new Error('封面 URL 不能指向内网地址');
-  }
-}
-
-function isPrivateIpv4(host) {
-  if (!/^\d+(?:\.\d+){3}$/.test(host)) return false;
-  const parts = host.split('.').map(Number);
-  if (parts.some((part) => part > 255)) return true;
-  return parts[0] === 0 || parts[0] === 10 || parts[0] === 127 ||
-    (parts[0] === 169 && parts[1] === 254) ||
-    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
-    (parts[0] === 192 && parts[1] === 168);
 }
 
 function sniffImageMime(bytes) {

@@ -45,7 +45,7 @@ export function providerFetch(input, init = {}) {
   return fetch(input, { ...init, redirect: 'manual' });
 }
 
-function isLocalHostname(hostname) {
+export function isLocalHostname(hostname) {
   if (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local')) return true;
   if (hostname.includes(':')) {
     const mappedIpv4 = hostname.match(/^::ffff:(?:0:)?([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
