@@ -74,6 +74,14 @@ export async function onRequestDelete(context) {
 
   await destroyUserSessions(env, params.id);
   await dbRun(env, 'DELETE FROM book_user_state WHERE user_id = ?', params.id);
+  // 清理该账号的个人书架及其成员关系，避免留下不可见的孤儿书架（共享书架归属全体，保留不动）
+  await dbRun(
+    env,
+    `DELETE FROM shelf_books WHERE shelf_id IN
+       (SELECT id FROM shelves WHERE scope = 'personal' AND owner = ?)`,
+    target.username
+  );
+  await dbRun(env, "DELETE FROM shelves WHERE scope = 'personal' AND owner = ?", target.username);
   await dbRun(env, 'DELETE FROM users WHERE id = ?', params.id);
   return json({ ok: true });
 }
