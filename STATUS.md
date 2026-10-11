@@ -12,6 +12,7 @@
 - 本次（2026-10-11）新增 7 项优化中剩余 4 项并逐项推送 `origin/main`：登录失败限流（`cf60c6b`）、按内容哈希提示疑似重复（`79ef6fd`）此前已完成；本次完成书库多字段排序（`c6fe219`）、书库统计面板（`fe19bb2`）、个人评论/笔记（`9688e78`）、单人默认隐藏多人视图（`8bd1e9f`），并补响应式验收数据（`f0786dc`）。全量测试 189 项通过，Playwright 响应式验收 460/460 通过。
 - 本次（2026-10-11 续）将书库统计从账号管理页拆成独立页（`4bf45f7`，已推 `origin/main`），并完成一轮 Cloudflare 部署：Pages 重新部署（`de44b37e`）、新建 R2 备份桶 `cf-book-backups`、部署定时备份 Worker `cf-book-backup-cron` 并配置 `ADMIN_TOKEN` secret。全量测试 189 项通过，本机 Playwright 响应式验收 509/509 通过（9 页 × 7 宽）。
 - 本次（2026-10-11 再续）按详情页浏览器批注重整并再次部署（`0256356`）：评论/笔记独立成框并单独保存、删除详情页标签编辑面板、AI 生成标签迁入编辑页、去掉“共享分类”标题与左竖线、只读标签居中。重新部署定时备份 Worker `cf-book-backup-cron`（回填真实 `CF_BOOK_URL`/桶名后 `wrangler deploy`，`ADMIN_TOKEN` secret 已在）与 Pages（`https://9a3ed841.cf-book.pages.dev`，主域 `cf-book.pages.dev`）。全量测试 189 项通过，本机 Playwright 响应式 509/509 通过。
+- 本次（2026-10-11 审计修复）按一轮只读审计逐项修复 7 处问题（未部署）：删除书籍/删除用户补齐孤儿清理；备份纳入 `shelves`/`shelf_books`；中间件鉴权改前缀判定；登录对不存在/停用账号做等价 PBKDF2 校验；封面外链 SSRF 校验复用严格 IPv6 判定；`/api/books/:id/tags` 收敛为仅管理员；删除未用导入与死代码。全量测试 189→202 项通过。
 
 ## 一、架构健康度
 
@@ -23,6 +24,17 @@
 - 本次新增现有图书批量清洗接口与管理页入口，沿用同一套 AI 配置，不新增生产依赖；新增迁移 `0015_title_clean.sql`。
 
 ## 二、变更影响范围
+
+- 本次（2026-10-11 审计修复）后端安全/一致性修复，未部署：
+  - 删除书籍（`functions/api/books/[id].js`）：在原有清理基础上补 `DELETE FROM shelf_books WHERE book_id=?` 与 `DELETE FROM ai_classifications WHERE book_id=?`，消除书架 `book_count` 虚高与孤儿分类记录；`book-delete` 测试加断言。
+  - 删除用户（`functions/api/users/[id].js`）：删除账号时一并清理其个人书架（`scope='personal' AND owner=username`）及成员关系，共享书架不动。
+  - 备份（`functions/utils/backup.js`）：`BACKUP_TABLES` 增补 `shelves`、`shelf_books`，`replace` 恢复可完整重建用户书架；`backup` 测试加导出/恢复断言；README 备份范围同步。
+  - 鉴权（`functions/_middleware.js`）：接口改为 `path.startsWith('/api')` 前缀判定，静态资源判定限定在非 API 路径，带点号的受保护接口路径不再被误判为静态资源而跳过鉴权；新增 `middleware` 测试。
+  - 登录计时（`functions/api/auth/login.js` + `functions/utils/auth.js`）：新增定格 `DUMMY_PASSWORD_HASH`，账号不存在/被停用时也跑一次等价 PBKDF2，消除用户名枚举的计时侧信道；新增 `login-api` 测试。
+  - 封面外链 SSRF（`functions/api/books/[id]/cover.js`）：复用 `ai-provider.js` 的 `isLocalHostname`（导出），覆盖 IPv6 环回/ULA/链路本地与 IPv4-mapped IPv6；`cover` 测试加拦截断言。
+  - 标签端点（`functions/api/books/[id]/tags.js`）：`PUT` 增加 `requireAdmin`，与编辑页口径一致；新增 `book-tags-api` 测试。
+  - 死代码清理：移除 `classify.js`/`title-clean.js` 未用的 `dbRun` 导入与 `ai-classification.js` 未调用的 `isPlausibleTitle`。
+  - 验证：`npm test` 202 项通过（新增 middleware 5、login-api 4、book-tags-api 2、backup +2），`node --check` 与 `git diff --check` 无告警；未部署、未在真实 Cloudflare 运行时验证。
 
 - 本次（2026-10-11 再续）详情页批注重整与再部署：
   - 评论独立（批注1）：`public/book.html` 把 `#f-comment`/`#comment-count` 从 `.state-row` 移到新 `.comment-box`，加 `#save-comment`/`#comment-msg`；`public/book.js` 的保存评分不再带 comment、新增“保存笔记”只提交 `{ comment }`（state 接口对未传字段读 existing，分区互不覆盖）。
