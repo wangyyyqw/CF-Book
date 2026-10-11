@@ -115,3 +115,22 @@ test('外链封面拒绝 IPv6 环回/ULA/链路本地与 IPv4-mapped IPv6', asyn
     globalThis.fetch = original;
   }
 });
+
+test('缺少 content-length 且响应体超限时按边读边截断拒绝', async () => {
+  const state = env();
+  const original = globalThis.fetch;
+  // 谎报：不带 content-length，响应体 >8MB 的伪装 JPEG
+  const huge = new Uint8Array(8 * 1024 * 1024 + 16);
+  huge[0] = 0xff; huge[1] = 0xd8; huge[2] = 0xff;
+  globalThis.fetch = async () =>
+    new Response(huge, { status: 200, headers: { 'content-type': 'image/jpeg' } });
+  try {
+    const form = new FormData();
+    form.append('sourceUrl', 'https://example.com/huge.jpg');
+    const response = await onRequestPost(context(state.env, form));
+    assert.equal(response.status, 400);
+    assert.equal(state.stored.length, 0, '超限内容不应写入 R2');
+  } finally {
+    globalThis.fetch = original;
+  }
+});

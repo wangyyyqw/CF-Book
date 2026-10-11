@@ -29,9 +29,11 @@ export async function onRequestPost(context) {
       return err(`外链封面下载失败：${e.message}`, 502);
     }
     if (!fetched.ok) return err(`外链封面下载失败：${fetched.status}`, 502);
+    // content-length 可能缺失或谎报，边读边累计并在超限时立即中止，避免把超大响应体整体读入内存
     const length = Number(fetched.headers.get('content-length') || 0);
     if (length > MAX_COVER) return err('封面不能超过 8MB');
-    bytes = await fetched.arrayBuffer();
+    bytes = await readBodyCapped(fetched, MAX_COVER);
+    if (!bytes) return err('封面不能超过 8MB');
     mime = String(fetched.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
   } else {
     if (file.size > MAX_COVER) return err('封面不能超过 8MB');
@@ -70,6 +72,34 @@ async function fetchCoverUrl(sourceUrl) {
     url = new URL(location, url);
   }
   throw new Error('封面重定向次数过多');
+}
+
+// 边读边累计字节数，一旦超过上限立刻中止并返回 null，避免谎报/缺失 content-length 时把超大响应读满内存
+async function readBodyCapped(response, maxBytes) {
+  const reader = response.body?.getReader?.();
+  if (!reader) {
+    const buffer = await response.arrayBuffer();
+    return buffer.byteLength > maxBytes ? null : buffer;
+  }
+  const parts = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    parts.push(value);
+  }
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    merged.set(part, offset);
+    offset += part.byteLength;
+  }
+  return merged.buffer;
 }
 
 function validateCoverUrl(url) {
