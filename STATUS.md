@@ -10,6 +10,7 @@
 - AI 支持 Workers AI、OpenAI-compatible 与 Anthropic Messages；密钥加密保存在服务端存储中，不写入仓库。
 - D1 备份含书目、账号、标签、评分、状态与 Telegram 分块索引；恢复只重建 D1，不触碰 Telegram 原文件。
 - 本次（2026-10-11）新增 7 项优化中剩余 4 项并逐项推送 `origin/main`：登录失败限流（`cf60c6b`）、按内容哈希提示疑似重复（`79ef6fd`）此前已完成；本次完成书库多字段排序（`c6fe219`）、书库统计面板（`fe19bb2`）、个人评论/笔记（`9688e78`）、单人默认隐藏多人视图（`8bd1e9f`），并补响应式验收数据（`f0786dc`）。全量测试 189 项通过，Playwright 响应式验收 460/460 通过。
+- 本次（2026-10-11 续）将书库统计从账号管理页拆成独立页（`4bf45f7`，已推 `origin/main`），并完成一轮 Cloudflare 部署：Pages 重新部署（`de44b37e`）、新建 R2 备份桶 `cf-book-backups`、部署定时备份 Worker `cf-book-backup-cron` 并配置 `ADMIN_TOKEN` secret。全量测试 189 项通过，本机 Playwright 响应式验收 509/509 通过（9 页 × 7 宽）。
 
 ## 一、架构健康度
 
@@ -22,6 +23,10 @@
 
 ## 二、变更影响范围
 
+- 本次（2026-10-11 续）统计页拆分与 Cloudflare 部署：
+  - 统计页拆分（`4bf45f7`）：新增 `public/stats.html`、`public/stats.js` 承载统计总览与分维度列表，仅管理员可见、非管理员提示无权限；`public/nav.js` 在“账号管理”前加“统计”入口；从 `public/users.html`、`public/users.js` 删除统计 panel 及 `loadStats`/`groupTagsByDimension`/`DIMENSION_LABEL` 与无用的 `formatBytes` 导入；`scripts/check-responsive-ui.mjs` 增测 stats 页。接口契约不变，复用既有 `/api/library/stats`。
+  - 部署与资源：Pages 重新部署线上生效（`https://de44b37e.cf-book.pages.dev`，主域 `cf-book.pages.dev`）；新建 R2 桶 `cf-book-backups` 存放备份；部署独立定时备份 Worker `cf-book-backup-cron`（`https://cf-book-backup-cron.uycmjfichg.workers.dev`，cron `17 3 * * *` UTC），并用与 Pages 一致的 `ADMIN_TOKEN` 设置 Worker secret。部署时临时回填 `wrangler.toml` 与 `workers/backup-cron/wrangler.toml` 真实值，完成后已 `git checkout --` 还原为公开仓库占位，工作区无残留改动。
+  - 验证：`npm test` 189 项全绿；`node --check` 相关 JS 文件通过；本机 Playwright 响应式 509/509 通过（9 页 × 7 宽）。线上 `/stats` 带管理员令牌返回 200 且含统计容器与 `stats.js`，未登录访问 302 跳转 `/login`；`/users` 已不含 `stats-overview`。备份 Worker 手动触发：错误令牌 403、正确令牌 200 并在 R2 生成 `backups/cf-book-backup-2026-10-11T01-42-50-947Z.json`（约 436KB 加密信封，`encrypted:true`，含 55 本书计数）。
 - 本次（2026-10-11）增量优化，逐项提交并推送 `origin/main`：
   - 书库多字段排序（`c6fe219`）：`/api/books` 增加 `sort`/`dir` 白名单参数（time/title/author/rating/size，asc/desc），非法键回落 time-desc，recommended 分支仍随机；`public/library.html`/`library.js` 加排序下拉并拆分请求参数，`style.css` 把目录栏栅格由 4 列扩到 5 列并同步 999/470 断点。接口契约向后兼容，默认行为不变。
   - 书库统计面板（`fe19bb2`）：新增 `/api/library/stats`（管理员，私有短缓存）按格式/语言/标准标签统计 `COUNT(*)` 与 `SUM(file_size)`；账号页新增统计面板，总览复用 `report-grid`，分维度用新 `stats-list` 布局，大小用 `formatBytes` 展示。
@@ -59,6 +64,8 @@
 
 ## 三、已知风险
 
+- 定时备份 Worker（`cf-book-backup-cron`）的 `ADMIN_TOKEN` 与 Pages 当前值一致（已用正确令牌手动触发成功）；若日后在 Pages 轮换 `ADMIN_TOKEN`，必须同步执行 `wrangler secret put ADMIN_TOKEN`（在 `workers/backup-cron/` 外、无占位 toml 干扰的目录，或带 `--name cf-book-backup-cron`），否则定时导出会 401。备份桶 `cf-book-backups` 仅保留最近 `KEEP_BACKUPS`（默认 14）份，更久的会被自动清理。
+- `/stats` 为管理员页：中间件对无登录态的页面统一 302 跳 `/login`，非管理员登录后由 `stats.js` 前端提示“仅管理员可查看书库统计”，但 `/api/library/stats` 的真正鉴权在后端 `requireAdmin`（401/403），前端提示仅为体验层。
 - 书库排序的 `sort`/`dir` 通过白名单映射到固定列名，非白名单键一律回落 `time-desc`，SQL 不拼接用户原始字符串；评分升序时未评分书 `rating_avg` 为 NULL，SQLite 视 NULL 最小会排在最前，属已验证的预期口径。
 - 书库统计按标准标签分维度统计时，一本书最多 3 个标签，其 `file_size` 会在各标签下重复计入，面板已用文案说明；统计走私有短缓存（30s），线上数值在缓存窗口内可能略滞后。
 - 个人评论随 `book_user_state` 存储且对所有登录账号可见（与评分同口径，不是私密笔记）；评论上限 500 字由前后端共同限制，`comment` 已纳入备份，迁移 `0018` 线上需执行后新列才生效。
@@ -81,7 +88,8 @@
 
 ## 四、下次最该做的事
 
-- 部署后在生产执行迁移 `0018_book_user_comment.sql`，确认 `book_user_state.comment` 列已就位，再验证详情页评论保存与备份导出含 comment。
+- 线上迁移已确认到位（`login_attempts` 表、`idx_books_sha256` 索引、`book_user_state.comment` 列均存在）；下一步在生产验证详情页评论保存与备份导出确实含 comment。
+- 观察定时备份 Worker 首次按 cron（UTC 03:17）自动执行是否成功写入 R2，并建立定期抽样解密校验；轮换 `ADMIN_TOKEN` 时记得同步 Worker secret。
 - 优先在 iOS Safari 与 Android 浏览器实机验证本次新界面（排序下拉、统计面板、评论文本域）及既有菜单、文件选择、键盘弹出、长任务列表。
 - 部署后在真实书库核对 `/api/library/stats` 的格式/语言/标签聚合口径与耗时，再决定是否调整私有缓存窗口。
 - 为备份增加恢复演练记录与定期校验（例如每月抽样解密一次备份）。
