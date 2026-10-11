@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CF-Book · 书库统计</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body class="library-page stats-page">
+    <header class="topbar library-topbar">
+      <a class="library-brand" href="/library" aria-label="CF-Book 书库">
+        <span class="library-mark">观</span><strong>CF-Book</strong>
+      </a>
+      <details class="library-menu">
+        <summary aria-label="展开导航菜单"><span></span><span></span><span></span></summary>
+        <div class="library-menu-list">
+          <a href="/library">书库</a><a href="/">上传</a><a href="/download">下载</a>
+          <div id="user-area" class="user-area"></div>
+        </div>
+      </details>
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="切换到暗色模式">暗色</button>
+    </header>
+
+    <main class="shell library-shell">
+      <section class="page-heading">
+        <p class="library-eyebrow">管理 / 书库统计</p>
+        <h1>这座书库的全貌</h1>
+        <p>按格式、语言与标准标签统计书籍数量和占用大小。一本书最多 3 个标准标签，分维度统计时大小会被各标签分别计入。</p>
+      </section>
+      <section class="panel">
+        <h2>总览</h2>
+        <div id="stats-overview" class="report-grid"></div>
+        <div id="stats-sections" class="stats-sections"></div>
+        <span id="stats-msg" class="form-msg"></span>
+      </section>
+    </main>
+
+    <script type="module" src="/nav.js"></script>
+    <script type="module" src="/stats.js"></script>
+  </body>
+</html>

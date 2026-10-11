@@ -11,7 +11,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
 const output = process.env.UI_OUTPUT_DIR;
-const pages = ['library', '', 'download', 'book?id=book-1', 'edit?id=book-1', 'users', 'tags', 'login'];
+const pages = ['library', '', 'download', 'book?id=book-1', 'edit?id=book-1', 'users', 'stats', 'tags', 'login'];
 const widths = [320, 375, 768, 999, 1000, 1440, 1920];
 const failures = [];
 let checks = 0;
@@ -91,7 +91,7 @@ async function checkTableCards(page, name, width) {
 async function waitForContent(page, name) {
   const ready = { library: '#books .book-card', '': '#upload-queue .task-item', download: '#tasks tbody tr',
     book: '#shelf-picker .shelf-check', edit: '#tag-type option:nth-child(2)',
-    users: '#user-table tbody tr', tags: '#tag-table tbody tr', login: '#auth-form' }[name];
+    users: '#user-table tbody tr', stats: '#stats-overview div', tags: '#tag-table tbody tr', login: '#auth-form' }[name];
   await page.locator(ready).first().waitFor({ state: 'attached' });
   await page.evaluate(() => document.fonts.ready);
 }
@@ -310,7 +310,7 @@ const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_EXE
 try {
   const base = `http://127.0.0.1:${server.address().port}`;
   for (const width of widths) for (const route of pages) await checkPage(browser, base, route, width);
-  console.log(`响应式验收：${checks - failures.length}/${checks} 项通过，8 个页面 × ${widths.length} 个宽度。`);
+  console.log(`响应式验收：${checks - failures.length}/${checks} 项通过，${pages.length} 个页面 × ${widths.length} 个宽度。`);
   for (const failure of failures) console.error(failure);
   if (failures.length) process.exitCode = 1;
 } finally {

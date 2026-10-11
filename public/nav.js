@@ -58,7 +58,7 @@ loadMe().then((data) => {
   }
   const isAdmin = user.role === 'admin';
   area.innerHTML = `
-    ${isAdmin ? '<a class="user-link" href="/tags">标签库</a><a class="user-link" href="/users">账号管理</a>' : ''}
+    ${isAdmin ? '<a class="user-link" href="/stats">统计</a><a class="user-link" href="/tags">标签库</a><a class="user-link" href="/users">账号管理</a>' : ''}
     <button id="user-logout" class="user-logout" type="button">退出登录</button>`;
   const currentPath = location.pathname.replace(/\.html$/, '');
   area.querySelectorAll('a').forEach((link) => {
