@@ -193,6 +193,8 @@ export async function onRequestDelete(context) {
   await dbRun(env, 'DELETE FROM book_user_state WHERE book_id = ?', params.id);
   await dbRun(env, 'DELETE FROM book_tags WHERE book_id = ?', params.id);
   await dbRun(env, 'DELETE FROM book_standard_tags WHERE book_id = ?', params.id);
+  await dbRun(env, 'DELETE FROM shelf_books WHERE book_id = ?', params.id);
+  await dbRun(env, 'DELETE FROM ai_classifications WHERE book_id = ?', params.id);
   await dbRun(env, 'DELETE FROM books WHERE id = ?', params.id);
   return json({ ok: true });
 }

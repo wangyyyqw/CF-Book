@@ -91,6 +91,9 @@ test('删除书籍会清掉封面、Telegram 分块消息与全部 D1 记录', a
     assert.ok(deleted.some((sql) => sql === 'DELETE FROM uploads WHERE upload_id = ?'));
     assert.ok(deleted.some((sql) => sql === 'DELETE FROM book_user_state WHERE book_id = ?'));
     assert.ok(deleted.some((sql) => sql === 'DELETE FROM book_tags WHERE book_id = ?'));
+    assert.ok(deleted.some((sql) => sql === 'DELETE FROM book_standard_tags WHERE book_id = ?'));
+    assert.ok(deleted.some((sql) => sql === 'DELETE FROM shelf_books WHERE book_id = ?'), '应清理书架成员关系');
+    assert.ok(deleted.some((sql) => sql === 'DELETE FROM ai_classifications WHERE book_id = ?'), '应清理 AI 分类记录');
     assert.ok(deleted.some((sql) => sql === 'DELETE FROM books WHERE id = ?'));
   });
 });
